@@ -1,129 +1,61 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>OMR PDF K-Level Counter - Multiple Students</title>
+  <meta charset="UTF-8">
+  <title>OMR K-Level Counter - Multiple Students</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
-    /* Video Background */
     body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      font-family: Arial, sans-serif;
-      color: white;
-      overflow-x: hidden;
+      margin: 0; padding: 0; height: 100%; font-family: Arial, sans-serif; color: white; overflow-x: hidden;
     }
-
     .video-bg {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      z-index: -2;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: -2;
     }
-
     .video-bg video {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      min-width: 100%;
-      min-height: 100%;
-      transform: translate(-50%, -50%);
-      object-fit: cover;
-      filter: brightness(0.85) blur(1px);
+      position: absolute; top: 50%; left: 50%;
+      min-width: 100%; min-height: 100%; transform: translate(-50%, -50%);
+      object-fit: cover; filter: brightness(0.85) blur(1px);
     }
-
     .overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.3);
-      z-index: -1;
+      position: fixed; top:0; left:0; width:100%; height:100%;
+      background: rgba(0,0,0,0.3); z-index: -1;
     }
-
     .content {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 40px;
-      width: 100%;
-      box-sizing: border-box;
+      position: relative; z-index:1; display:flex; flex-direction:column; align-items:center; padding:40px; width:100%;
+      box-sizing:border-box;
     }
-
-    h1 {
-      color: #00eaff;
-      text-shadow: 0 0 15px #00eaff;
-      text-align: center;
-    }
-
+    h1 { color:#00eaff; text-shadow:0 0 15px #00eaff; text-align:center; }
     .college-header {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,170,255,0.15);
-      padding: 15px;
-      border-radius: 12px;
-      margin: 20px auto;
-      width: 700px;
-      box-shadow: 0 0 15px rgba(0,200,255,0.3);
-      flex-wrap: wrap;
+      display:flex; align-items:center; justify-content:center;
+      background: rgba(0,170,255,0.15); padding:15px; border-radius:12px; margin:20px auto;
+      width:700px; box-shadow:0 0 15px rgba(0,200,255,0.3); flex-wrap:wrap;
     }
-
-    .college-header img { height: 80px; margin-right: 20px; border-radius: 8px; }
-    .college-header h2 { color: #00eaff; margin: 10px; text-align: center; }
-
+    .college-header img { height:80px; margin-right:20px; border-radius:8px; }
+    .college-header h2 { color:#00eaff; margin:10px; text-align:center; }
     .upload-box {
-      text-align: center;
-      margin: 20px auto;
-      padding: 30px;
-      border: 2px dashed #00eaff;
-      border-radius: 10px;
-      background: rgba(0,230,255,0.08);
-      width: 460px;
-      backdrop-filter: blur(6px);
-      box-shadow: 0 0 20px rgba(0,238,255,0.3);
+      text-align:center; margin:20px auto; padding:30px;
+      border:2px dashed #00eaff; border-radius:10px; background: rgba(0,230,255,0.08);
+      width:460px; backdrop-filter: blur(6px); box-shadow:0 0 20px rgba(0,238,255,0.3);
     }
-
-    input[type="file"] { margin-top: 10px; }
-
-    #status, #results {
-      width: 90%;
-      max-width: 700px;
-      margin: 20px auto;
-      word-wrap: break-word;
-    }
-
+    input[type="file"] { margin-top:10px; }
+    #status, #results { width:90%; max-width:700px; margin:20px auto; word-wrap: break-word; }
     .student-panel {
-      background: rgba(255,255,255,0.08);
-      padding: 20px;
-      margin: 20px 0;
-      border-radius: 10px;
-      box-shadow: 0 0 15px rgba(0,200,255,0.2);
-      backdrop-filter: blur(6px);
+      background: rgba(255,255,255,0.08); padding:20px; margin:20px 0; border-radius:10px;
+      box-shadow:0 0 15px rgba(0,200,255,0.2); backdrop-filter: blur(6px);
     }
-
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid rgba(0,238,255,0.3); padding: 8px; text-align: center; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th, td { border:1px solid rgba(0,238,255,0.3); padding:8px; text-align:center; }
     th { background: rgba(0,238,255,0.2); }
-    .answered { color: #00ff9d; font-weight: bold; }
-    .unanswered { color: #ff4b4b; font-weight: bold; }
-
-    @media (max-width: 768px) {
-      .college-header, .upload-box, #status, #results { width: 90%; padding: 15px; }
-      .college-header img { height: 60px; margin-right: 10px; }
-      h1 { font-size: 1.5em; }
+    .answered { color:#00ff9d; font-weight:bold; }
+    .unanswered { color:#ff4b4b; font-weight:bold; }
+    @media(max-width:768px){
+      .college-header, .upload-box, #status, #results { width:90%; padding:15px; }
+      .college-header img { height:60px; margin-right:10px; }
+      h1 { font-size:1.5em; }
     }
   </style>
 </head>
 <body>
-  <!-- Video Background -->
   <div class="video-bg">
     <video autoplay muted loop playsinline>
       <source src="Animation video.mp4" type="video/mp4">
@@ -138,10 +70,10 @@
       <h2>Government Arts College, Nandanam, Chennai-35</h2>
     </div>
 
-    <h1>OMR PDF K-Level Counter - Multiple Students</h1>
+    <h1>OMR K-Level Counter - Multiple Students</h1>
 
     <div class="upload-box">
-      <p>Select <b>multiple .pdf</b> files to process:</p>
+      <p>Select <b>multiple PDF files</b> to process:</p>
       <input type="file" id="fileInput" accept=".pdf" multiple>
     </div>
 
@@ -152,81 +84,72 @@
   <script>
     document.getElementById("fileInput").addEventListener("change", handleFiles);
 
-    async function handleFiles(event) {
+    async function handleFiles(event){
       const files = event.target.files;
-      if (!files.length) return;
-
+      if(!files.length) return;
       setStatus(`⏳ Processing ${files.length} file(s)...`);
       document.getElementById("results").innerHTML = "";
 
-      for (let i = 0; i < files.length; i++) {
+      for(let i=0; i<files.length; i++){
         const file = files[i];
-        try {
+        try{
           const extractedText = await extractTextFromPDF(file);
-          const { department, subjectCode, regNo, studentName, subjectName } = extractStudentInfo(extractedText);
-          const { counts, total, unanswered, details } = countKLevels(extractedText);
+          const {studentName, regNo, department, subjectName, subjectCode} = extractStudentInfo(extractedText);
+          const {counts, total, unanswered, details} = countKLevels(extractedText);
 
-          let studentHtml = `<div class="student-panel"><h3>Student ${i+1}</h3><table>`;
-          studentHtml += `<tr><td><b>Student Name</b></td><td>${studentName || "Not Found"}</td></tr>`;
-          studentHtml += `<tr><td><b>Register No</b></td><td>${regNo || "Not Found"}</td></tr>`;
-          studentHtml += `<tr><td><b>Department</b></td><td>${department || "Not Found"}</td></tr>`;
-          studentHtml += `<tr><td><b>Subject Name</b></td><td>${subjectName || "Not Found"}</td></tr>`;
-          studentHtml += `<tr><td><b>Subject Code</b></td><td>${subjectCode || "Not Found"}</td></tr>`;
-          studentHtml += "</table>";
+          let html = `<div class="student-panel"><h3>Student ${i+1}</h3><table>`;
+          html += `<tr><td><b>Student Name</b></td><td>${studentName||"Not Found"}</td></tr>`;
+          html += `<tr><td><b>Register No</b></td><td>${regNo||"Not Found"}</td></tr>`;
+          html += `<tr><td><b>Department</b></td><td>${department||"Not Found"}</td></tr>`;
+          html += `<tr><td><b>Subject Name</b></td><td>${subjectName||"Not Found"}</td></tr>`;
+          html += `<tr><td><b>Subject Code</b></td><td>${subjectCode||"Not Found"}</td></tr>`;
+          html += `</table>`;
 
-          studentHtml += "<h4>K-Level Counts</h4><table><tr><th>K-Level</th><th>Count</th></tr>";
-          for (const k of ["K1","K2","K3","K4","K5","K6"]) {
-            studentHtml += `<tr><td>${k}</td><td>${counts[k]}</td></tr>`;
-          }
-          studentHtml += `<tr><td><b>Total Answered</b></td><td><b>${total}</b></td></tr>`;
-          studentHtml += `<tr><td><b>Total Unanswered</b></td><td><b>${unanswered}</b></td></tr>`;
-          studentHtml += `<tr><td><b>Total Questions</b></td><td><b>${details.length}</b></td></tr>`;
-          studentHtml += "</table>";
+          html += "<h4>K-Level Counts</h4><table><tr><th>K-Level</th><th>Count</th></tr>";
+          for(const k of ["K1","K2","K3","K4","K5","K6"]) html += `<tr><td>${k}</td><td>${counts[k]}</td></tr>`;
+          html += `<tr><td><b>Total Answered</b></td><td><b>${total}</b></td></tr>`;
+          html += `<tr><td><b>Total Unanswered</b></td><td><b>${unanswered}</b></td></tr>`;
+          html += `<tr><td><b>Total Questions</b></td><td><b>${details.length}</b></td></tr>`;
+          html += "</table>";
 
-          studentHtml += "<h4>Question-wise Answers</h4><ul>";
-          details.forEach((d, idx) => {
-            studentHtml += `<li>Q${idx+1}: ${d.pickedK ? `<span class="answered">${d.pickedK}</span>` : `<span class="unanswered">Unanswered ❌</span>`}</li>`;
+          html += "<h4>Question-wise Answers</h4><ul>";
+          details.forEach((d, idx)=>{
+            html += `<li>Q${idx+1}: ${d.pickedK ? `<span class="answered">${d.pickedK}</span>` : `<span class="unanswered">Unanswered ❌</span>`}</li>`;
           });
-          studentHtml += "</ul></div>";
+          html += "</ul></div>";
 
-          document.getElementById("results").innerHTML += studentHtml;
+          document.getElementById("results").innerHTML += html;
 
-        } catch (err) {
+        }catch(err){
           document.getElementById("results").innerHTML += `<div class="student-panel">❌ Error processing file ${file.name}: ${err.message}</div>`;
         }
       }
-
-      setStatus("✅ Processing Complete!");
+      setStatus("✅ All files processed!");
     }
 
-    function setStatus(msg) { document.getElementById("status").innerText = msg; }
+    function setStatus(msg){ document.getElementById("status").innerText = msg; }
 
-    async function extractTextFromPDF(file) {
+    async function extractTextFromPDF(file){
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
+      const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
       let text = "";
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
+      for(let i=1;i<=pdf.numPages;i++){
+        const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        const pageText = content.items.map(item => item.str).join(" ");
-        text += pageText + "\n";
+        text += content.items.map(item=>item.str).join(" ") + "\n";
       }
-
-      text = text.replace(/\s+Q\.No\./gi, "\nQ.No.");
-      text = text.replace(/(\d+)\s+\(/g, "\n$1 (");
+      text = text.replace(/\s+Q\.No\./gi,"\nQ.No.");
+      text = text.replace(/(\d+)\s+\(/g,"\n$1 (");
       return text;
     }
 
-    function extractStudentInfo(text) {
-      text = text.replace(/\s+/g, " ");
-      text = text.replace(/([A-Z])\s+([a-z]+)/g, "$1$2");
-
-      text = text.replace(/Student\s*Name\s*:/i, "\nStudent Name: ");
-      text = text.replace(/Register\s*No\s*:/i, "\nRegister No: ");
-      text = text.replace(/Department\s*:/i, "\nDepartment: ");
-      text = text.replace(/Subject\s*Name\s*:/i, "\nSubject Name: ");
-      text = text.replace(/Subject\s*Code\s*:/i, "\nSubject Code: ");
+    function extractStudentInfo(text){
+      text = text.replace(/\s+/g," ").replace(/([A-Z])\s+([a-z]+)/g,"$1$2");
+      text = text.replace(/Student\s*Name\s*:/i,"\nStudent Name: ");
+      text = text.replace(/Register\s*No[:.\- ]*/i,"\nRegister No: ");
+      text = text.replace(/Department[:.\- ]*/i,"\nDepartment: ");
+      text = text.replace(/Subject\s*Name[:.\- ]*/i,"\nSubject Name: ");
+      text = text.replace(/Subject\s*Code[:.\- ]*/i,"\nSubject Code: ");
 
       const nameMatch = text.match(/Student\s*Name[:.\- ]+([A-Za-z .]+)/i);
       const regMatch = text.match(/Register\s*No[:.\- ]+([A-Za-z0-9]+)/i);
@@ -235,31 +158,29 @@
       const subjCodeMatch = text.match(/Subject\s*Code[:.\- ]+([A-Za-z0-9]+)/i);
 
       return {
-        studentName: nameMatch ? nameMatch[1].trim() : null,
-        regNo: regMatch ? regMatch[1].trim() : null,
-        department: deptMatch ? deptMatch[1].replace(/\s+/g, " ").trim() : null,
-        subjectName: subjNameMatch ? subjNameMatch[1].trim() : null,
-        subjectCode: subjCodeMatch ? subjCodeMatch[1].trim() : null
+        studentName: nameMatch ? nameMatch[1].trim(): null,
+        regNo: regMatch ? regMatch[1].trim(): null,
+        department: deptMatch ? deptMatch[1].replace(/\s+/g," ").trim(): null,
+        subjectName: subjNameMatch ? subjNameMatch[1].trim(): null,
+        subjectCode: subjCodeMatch ? subjCodeMatch[1].trim(): null
       };
     }
 
-    function countKLevels(rawText) {
-      const counts = { K1:0, K2:0, K3:0, K4:0, K5:0, K6:0 };
-      const qRegex = /^(\d+)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)/gm;
-      const details = [];
-
+    function countKLevels(rawText){
+      const counts={K1:0,K2:0,K3:0,K4:0,K5:0,K6:0};
+      const details=[];
+      const qRegex=/^(\d+)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)/gm;
       let match;
-      while ((match = qRegex.exec(rawText)) !== null) {
-        const qNo = match[1];
-        const choices = match.slice(2, 8);
-        const pickedIndex = choices.findIndex(c => c.includes("●"));
-        if (pickedIndex >= 0) counts[`K${pickedIndex+1}`]++;
-        details.push({ q: qNo, pickedK: pickedIndex >= 0 ? `K${pickedIndex+1}` : null });
+      while(match=qRegex.exec(rawText)){
+        const qNo=match[1];
+        const choices=match.slice(2,8);
+        const pickedIndex=choices.findIndex(c=>c.includes("●"));
+        if(pickedIndex>=0) counts[`K${pickedIndex+1}`]++;
+        details.push({q:qNo, pickedK:pickedIndex>=0?`K${pickedIndex+1}`:null});
       }
-
-      const total = Object.values(counts).reduce((a,b)=>a+b,0);
-      const unanswered = details.filter(d => !d.pickedK).length;
-      return { counts, total, unanswered, details };
+      const total=Object.values(counts).reduce((a,b)=>a+b,0);
+      const unanswered=details.filter(d=>!d.pickedK).length;
+      return {counts,total,unanswered,details};
     }
   </script>
 </body>
