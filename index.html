@@ -1,220 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OMR K-Level Counter – PDF / Image / DOCX</title>
+<title>OMR Reader – PDF / Image / DOCX + K-Level Counter</title>
 
-<!-- Libraries -->
+<!-- JS Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.1/dist/tesseract.min.js"></script>
 <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
 
 <style>
 body {
-  font-family: 'Segoe UI', sans-serif;
-  background: #eef6fb;
+  font-family: "Segoe UI", sans-serif;
+  background: #f6f8fb;
+  padding: 20px;
   color: #222;
-  margin: 0;
-  padding: 0;
 }
 .container {
-  max-width: 900px;
-  margin: 30px auto;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  max-width: 950px;
+  margin: auto;
+  background: #fff;
   padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
 }
 h1 {
-  color: #0078ff;
   text-align: center;
-  margin-bottom: 10px;
+  color: #007bff;
 }
-h2 { color: #333; border-bottom: 2px solid #0078ff33; padding-bottom: 5px; }
 input[type=file] {
   display: block;
-  margin: 20px auto;
+  margin: 15px auto;
   padding: 10px;
 }
 #status {
   text-align: center;
+  color: #444;
+  font-weight: bold;
   margin-top: 10px;
-  color: #555;
-  font-weight: 500;
 }
-#results {
-  margin-top: 20px;
-}
-.details, .kcount {
-  background: #f0f8ff;
-  padding: 12px;
+.details, .klevel {
+  background: #e8f4ff;
+  border-left: 5px solid #007bff;
+  padding: 10px;
+  margin-bottom: 15px;
   border-radius: 8px;
-  margin-top: 15px;
 }
-.kcount table {
+.klevel table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 8px;
 }
-.kcount th, .kcount td {
-  border: 1px solid #0078ff33;
+.klevel th, .klevel td {
+  border: 1px solid #007bff33;
   padding: 6px;
   text-align: center;
 }
-.kcount th {
-  background: #0078ff11;
+.klevel th {
+  background: #007bff11;
 }
-.answered { color: #00b36b; font-weight: bold; }
+.answered { color: #00a86b; font-weight: bold; }
 .unanswered { color: #ff3b3b; font-weight: bold; }
 </style>
 </head>
 
 <body>
-<div class="container">
-  <h1>📘 OMR K-Level Counter</h1>
-  <p style="text-align:center;">Upload a <b>PDF, DOCX, or Image</b> to extract student info and count K-Levels.</p>
-
-  <input type="file" id="fileInput" accept=".pdf,.docx,.jpg,.jpeg,.png">
-  <div id="status">No file selected yet.</div>
-  <div id="results"></div>
-</div>
+  <div class="container">
+    <h1>📘 OMR Reader – PDF / Image / DOCX + K-Level Counter</h1>
+    <p style="text-align:center;">Upload a <b>PDF, DOCX, or Image</b> to extract student info and count K-levels.</p>
+    <input type="file" id="fileInput" accept=".pdf,.docx,.jpg,.jpeg,.png">
+    <div id="status"></div>
+    <div id="output">No file uploaded yet.</div>
+  </div>
 
 <script>
 document.getElementById("fileInput").addEventListener("change", handleFile);
 
 async function handleFile(event) {
-  const file = event.target.files[0];
-  const ext = file.name.split('.').pop().toLowerCase();
-  const status = document.getElementById("status");
-  const results = document.getElementById("results");
-  status.textContent = "⏳ Processing " + file.name + " ...";
-  results.innerHTML = "";
+    const file = event.target.files[0];
+    const ext = file.name.split('.').pop().toLowerCase();
+    const status = document.getElementById("status");
+    const output = document.getElementById("output");
+    status.textContent = "⏳ Processing " + file.name + " ...";
+    output.textContent = "";
 
-  try {
-    let text = "";
-    if (ext === "pdf") text = await extractFromPDF(file);
-    else if (ext === "docx") text = await extractFromDOCX(file);
-    else if (["jpg","jpeg","png"].includes(ext)) text = await extractFromImage(file);
-    else throw new Error("Unsupported file format");
+    try {
+        let text = "";
+        if (ext === "pdf") text = await extractFromPDF(file);
+        else if (ext === "docx") text = await extractFromDOCX(file);
+        else if (["jpg", "jpeg", "png"].includes(ext)) text = await extractFromImage(file);
+        else throw new Error("Unsupported file type.");
 
-    if (!text || text.trim().length === 0) {
-      throw new Error("No text found. Try clearer scan or text-based PDF.");
+        if (!text || text.trim().length === 0) {
+            throw new Error("No text detected in file. Try uploading a clearer image or text-based PDF.");
+        }
+
+        status.textContent = "✅ Extraction complete!";
+        displayExtractedData(text);
+    } catch (err) {
+        status.innerHTML = "❌ Error: " + err.message;
+        console.error(err);
+    }
+}
+
+// ---- PDF Extractor (with OCR fallback)
+async function extractFromPDF(file) {
+    const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
+    let fullText = "";
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const text = content.items.map(item => item.str).join(" ");
+        fullText += text + "\n";
     }
 
-    status.textContent = "✅ Extraction Complete!";
-    processText(text);
-  } catch (err) {
-    status.innerHTML = "❌ Error: " + err.message;
-    console.error(err);
-  }
+    if (fullText.trim().length === 0) {
+        fullText = await ocrFromPDF(file);
+    }
+    return fullText;
 }
 
-// PDF extraction with OCR fallback
-async function extractFromPDF(file) {
-  const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-  let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    text += content.items.map(it => it.str).join(" ") + "\n";
-  }
-  if (text.trim().length === 0) text = await ocrFromPDF(file);
-  return text;
-}
-
-// OCR fallback for image-based PDFs
+// OCR for scanned PDFs
 async function ocrFromPDF(file) {
-  const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-  let fullText = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const vp = page.getViewport({ scale: 2 });
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = vp.width;
-    canvas.height = vp.height;
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    const dataUrl = canvas.toDataURL("image/png");
-    const ocr = await Tesseract.recognize(dataUrl, "eng", {
-      logger: m => document.getElementById("status").textContent = `🔍 OCR Page ${i} – ${(m.progress*100)|0}%`
-    });
-    fullText += ocr.data.text + "\n";
-  }
-  return fullText;
+    const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
+    let text = "";
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        const img = canvas.toDataURL("image/png");
+        const ocr = await Tesseract.recognize(img, "eng", {
+            logger: info => {
+                document.getElementById("status").textContent = `🔍 OCR in progress... ${info.progress * 100 | 0}%`;
+            }
+        });
+        text += ocr.data.text + "\n";
+    }
+    return text;
 }
 
 // DOCX extraction
 async function extractFromDOCX(file) {
-  const buffer = await file.arrayBuffer();
-  const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-  return result.value;
+    const buffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return result.value;
 }
 
 // Image extraction
 async function extractFromImage(file) {
-  const img = URL.createObjectURL(file);
-  const ocr = await Tesseract.recognize(img, "eng", {
-    logger: m => document.getElementById("status").textContent = `🔍 OCR ${(m.progress*100)|0}%`
-  });
-  return ocr.data.text;
+    const img = URL.createObjectURL(file);
+    const result = await Tesseract.recognize(img, "eng", {
+        logger: info => {
+            document.getElementById("status").textContent = `🔍 OCR in progress... ${info.progress * 100 | 0}%`;
+        }
+    });
+    return result.data.text;
 }
 
-// Process extracted text: student info + K-count
-function processText(text) {
-  const results = document.getElementById("results");
+// ---- Display extracted text & K-level summary ----
+function displayExtractedData(text) {
+    const output = document.getElementById("output");
+    const details = {};
 
-  // Extract Student Info
-  const info = {
-    name: (text.match(/Student\s*Name[:.\- ]+([A-Za-z .]+)/i) || [])[1] || "Not Found",
-    regNo: (text.match(/Register\s*No[:.\- ]+([A-Za-z0-9]+)/i) || [])[1] || "Not Found",
-    dept: (text.match(/Department[:.\- ]+([A-Za-z0-9 .]+)/i) || [])[1] || "Not Found",
-    subject: (text.match(/Subject\s*Name[:.\- ]+([A-Za-z0-9 .]+)/i) || [])[1] || "Not Found",
-    code: (text.match(/Subject\s*Code[:.\- ]+([A-Za-z0-9]+)/i) || [])[1] || "Not Found"
-  };
+    // Extract student info
+    details.college = (text.match(/College\s*Name[:.]?\s*(.+)/i) || [])[1] || "Not found";
+    details.class = (text.match(/Class[:.]?\s*(.+)/i) || [])[1] || "Not found";
+    details.subjectCode = (text.match(/Subject\s*Code[:.]?\s*([A-Za-z0-9]+)/i) || [])[1] || "Not found";
+    details.registerNo = (text.match(/Register\s*No[:.]?\s*(\d+)/i) || [])[1] || "Not found";
 
-  // Count K-levels (looks for “K1 ●” or “K1 ✓” etc.)
-  const kCounts = { K1:0, K2:0, K3:0, K4:0, K5:0, K6:0 };
-  const qRegex = /Q\s*\d+.*?(K1|K2|K3|K4|K5|K6).*?(●|✓|✔)/gi;
-  let match;
-  const details = [];
-  while ((match = qRegex.exec(text)) !== null) {
-    const k = match[1];
-    kCounts[k]++;
-    details.push(k);
-  }
+    // ---- NEW: Detect K-level answers ----
+    const kCounts = { K1:0, K2:0, K3:0, K4:0, K5:0, K6:0 };
+    const questionRegex = /Q\s*\d+.*?(K1|K2|K3|K4|K5|K6).*?(●|✓|✔|filled|tick)/gi;
+    let match, questionCount = 0, answered = [];
 
-  const totalAnswered = Object.values(kCounts).reduce((a,b)=>a+b,0);
-  const totalQuestions = (text.match(/Q\s*\d+/gi) || []).length;
-  const unanswered = Math.max(0, totalQuestions - totalAnswered);
+    while ((match = questionRegex.exec(text)) !== null) {
+        questionCount++;
+        const k = match[1];
+        kCounts[k]++;
+        answered.push({ q: questionCount, k });
+    }
 
-  // Display
-  results.innerHTML = `
-    <div class="details">
-      <h2>📋 Student Information</h2>
-      <b>Name:</b> ${info.name}<br>
-      <b>Register No:</b> ${info.regNo}<br>
-      <b>Department:</b> ${info.dept}<br>
-      <b>Subject Name:</b> ${info.subject}<br>
-      <b>Subject Code:</b> ${info.code}<br>
-    </div>
+    const totalAnswered = Object.values(kCounts).reduce((a,b)=>a+b,0);
+    const totalQuestions = (text.match(/Q\s*\d+/gi) || []).length;
+    const unanswered = Math.max(0, totalQuestions - totalAnswered);
 
-    <div class="kcount">
-      <h2>🧮 K-Level Counts</h2>
-      <table>
-        <tr><th>K-Level</th><th>Count</th></tr>
-        ${Object.entries(kCounts).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join("")}
-        <tr><td><b>Total Answered</b></td><td><b>${totalAnswered}</b></td></tr>
-        <tr><td><b>Unanswered</b></td><td><b>${unanswered}</b></td></tr>
-        <tr><td><b>Total Questions</b></td><td><b>${totalQuestions}</b></td></tr>
-      </table>
-    </div>
+    // ---- OUTPUT UI ----
+    output.innerHTML = `
+      <div class="details">
+        <h3>📋 Student Details</h3>
+        <b>College:</b> ${details.college}<br>
+        <b>Class:</b> ${details.class}<br>
+        <b>Subject Code:</b> ${details.subjectCode}<br>
+        <b>Register No:</b> ${details.registerNo}<br>
+      </div>
 
-    <div class="kcount">
-      <h2>📝 Question-wise Detected</h2>
-      ${details.length > 0 ? details.map((k,i)=>`Q${i+1}: <span class='answered'>${k}</span>`).join("<br>") : "<p class='unanswered'>No answers detected.</p>"}
-    </div>
-  `;
+      <div class="klevel">
+        <h3>🧮 K-Level Counter</h3>
+        <table>
+          <tr><th>K-Level</th><th>Count</th></tr>
+          ${Object.entries(kCounts).map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}
+          <tr><td><b>Total Answered</b></td><td><b>${totalAnswered}</b></td></tr>
+          <tr><td><b>Unanswered</b></td><td><b>${unanswered}</b></td></tr>
+          <tr><td><b>Total Questions</b></td><td><b>${totalQuestions}</b></td></tr>
+        </table>
+      </div>
+
+      <div class="klevel">
+        <h3>📝 Question-wise Detected K-Levels</h3>
+        ${answered.length > 0
+          ? answered.map(a => `Q${a.q}: <span class='answered'>${a.k}</span>`).join("<br>")
+          : "<p class='unanswered'>No K-Level answers detected.</p>"}
+      </div>
+
+      <hr>
+      <b>Full Extracted Text:</b><br><pre>${text}</pre>
+    `;
 }
 </script>
 </body>
