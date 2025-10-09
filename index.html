@@ -3,60 +3,69 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OMR PDF / Image / DOCX K-Level Extractor</title>
+<title>OMR Reader – PDF / Image / DOCX Extractor</title>
 
-<!-- Libraries -->
+<!-- JS Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.1/dist/tesseract.min.js"></script>
 <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
 
 <style>
-  body {
-    font-family: "Segoe UI", sans-serif;
-    background: #f8f9fa;
-    margin: 0;
-    padding: 20px;
-    color: #333;
-  }
-  h1 {
-    text-align: center;
-    color: #0066cc;
-  }
-  .container {
-    max-width: 900px;
-    margin: auto;
-    background: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-  }
-  input[type=file] {
-    display: block;
-    margin: 10px auto;
-    padding: 10px;
-  }
-  #output {
-    background: #f0f0f0;
-    border-radius: 6px;
-    padding: 15px;
-    margin-top: 20px;
-    white-space: pre-wrap;
-  }
-  .details {
-    background: #e7f3ff;
-    border-left: 5px solid #007bff;
-    padding: 10px;
-    margin-top: 20px;
-    border-radius: 6px;
-  }
+body {
+  font-family: "Segoe UI", sans-serif;
+  background: #f6f8fb;
+  padding: 20px;
+  color: #222;
+}
+.container {
+  max-width: 900px;
+  margin: auto;
+  background: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+}
+h1 {
+  text-align: center;
+  color: #007bff;
+}
+input[type=file] {
+  display: block;
+  margin: 15px auto;
+  padding: 10px;
+}
+#status {
+  text-align: center;
+  color: #444;
+  font-weight: bold;
+  margin-top: 10px;
+}
+#output {
+  margin-top: 20px;
+  white-space: pre-wrap;
+  background: #f3f3f3;
+  border-radius: 10px;
+  padding: 15px;
+}
+.details {
+  background: #e8f4ff;
+  border-left: 5px solid #007bff;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.error {
+  color: red;
+  font-weight: bold;
+}
 </style>
 </head>
 
 <body>
   <div class="container">
-    <h1>OMR Reader – PDF / Image / DOCX</h1>
-    <p>Select a file (.pdf, .jpg, .jpeg, .png, .docx) to extract student details.</p>
-    <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.docx">
+    <h1>📘 OMR Reader – PDF / Image / DOCX Extractor</h1>
+    <p style="text-align:center;">Upload a <b>PDF, DOCX, or Image</b> to extract student details.</p>
+    <input type="file" id="fileInput" accept=".pdf,.docx,.jpg,.jpeg,.png">
+    <div id="status"></div>
     <div id="output">No file uploaded yet.</div>
   </div>
 
@@ -66,53 +75,53 @@ document.getElementById("fileInput").addEventListener("change", handleFile);
 async function handleFile(event) {
     const file = event.target.files[0];
     const ext = file.name.split('.').pop().toLowerCase();
+    const status = document.getElementById("status");
     const output = document.getElementById("output");
-    output.textContent = "Processing file: " + file.name + " ...";
+    status.textContent = "⏳ Processing " + file.name + " ...";
+    output.textContent = "";
 
-    let text = "";
+    try {
+        let text = "";
+        if (ext === "pdf") text = await extractFromPDF(file);
+        else if (ext === "docx") text = await extractFromDOCX(file);
+        else if (["jpg", "jpeg", "png"].includes(ext)) text = await extractFromImage(file);
+        else throw new Error("Unsupported file type.");
 
-    if (ext === "pdf") {
-        text = await extractPDF(file);
-    } else if (ext === "docx") {
-        text = await extractDocx(file);
-    } else if (["jpg", "jpeg", "png"].includes(ext)) {
-        text = await extractImage(file);
-    } else {
-        output.textContent = "❌ Unsupported file format.";
-        return;
+        if (!text || text.trim().length === 0) {
+            throw new Error("No text detected in file. Try uploading a clearer image or a text-based PDF.");
+        }
+
+        status.textContent = "✅ Extraction complete!";
+        displayExtractedData(text);
+    } catch (err) {
+        status.innerHTML = "❌ Error: " + err.message;
+        console.error(err);
     }
-
-    if (text.trim().length === 0) {
-        output.textContent = "⚠️ No text detected.";
-        return;
-    }
-
-    displayText(text);
 }
 
-// ========== PDF HANDLING ==========
-async function extractPDF(file) {
+// Extract from PDF (with OCR fallback)
+async function extractFromPDF(file) {
     const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-    let text = "";
+    let fullText = "";
 
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        const pageText = content.items.map(item => item.str).join(" ");
-        text += pageText + "\n";
+        const text = content.items.map(item => item.str).join(" ");
+        fullText += text + "\n";
     }
 
-    // If PDF has no extractable text, use OCR fallback
-    if (text.trim().length === 0) {
-        text = await ocrPDF(file);
+    if (fullText.trim().length === 0) {
+        // OCR fallback
+        fullText = await ocrFromPDF(file);
     }
-    return text;
+    return fullText;
 }
 
-// ========== OCR FALLBACK FOR IMAGE PDF ==========
-async function ocrPDF(file) {
+// OCR for scanned PDFs
+async function ocrFromPDF(file) {
     const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-    let fullText = "";
+    let text = "";
 
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -123,48 +132,56 @@ async function ocrPDF(file) {
         canvas.height = viewport.height;
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
-        const imgData = canvas.toDataURL("image/png");
-        const result = await Tesseract.recognize(imgData, "eng");
-        fullText += result.data.text + "\n";
+        const img = canvas.toDataURL("image/png");
+        const ocr = await Tesseract.recognize(img, "eng", {
+            logger: info => {
+                document.getElementById("status").textContent = `🔍 OCR in progress... ${info.progress * 100 | 0}%`;
+            }
+        });
+        text += ocr.data.text + "\n";
     }
-
-    return fullText;
+    return text;
 }
 
-// ========== DOCX HANDLING ==========
-async function extractDocx(file) {
+// DOCX extraction
+async function extractFromDOCX(file) {
     const buffer = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer: buffer });
     return result.value;
 }
 
-// ========== IMAGE HANDLING ==========
-async function extractImage(file) {
+// Image extraction
+async function extractFromImage(file) {
     const img = URL.createObjectURL(file);
-    const result = await Tesseract.recognize(img, "eng");
+    const result = await Tesseract.recognize(img, "eng", {
+        logger: info => {
+            document.getElementById("status").textContent = `🔍 OCR in progress... ${info.progress * 100 | 0}%`;
+        }
+    });
     return result.data.text;
 }
 
-// ========== DISPLAY RESULTS ==========
-function displayText(text) {
+// Display extracted data
+function displayExtractedData(text) {
     const output = document.getElementById("output");
-    output.textContent = text;
+    const details = {};
 
-    // Extract student details
-    const college = text.match(/College\s*Name[:.]?\s*(.+)/i);
-    const className = text.match(/Class[:.]?\s*(.+)/i);
-    const subjectCode = text.match(/Subject\s*Code[:.]?\s*([A-Za-z0-9]+)/i);
-    const registerNo = text.match(/Register\s*No[:.]?\s*(\d+)/i);
+    details.college = (text.match(/College\s*Name[:.]?\s*(.+)/i) || [])[1] || "Not found";
+    details.class = (text.match(/Class[:.]?\s*(.+)/i) || [])[1] || "Not found";
+    details.subjectCode = (text.match(/Subject\s*Code[:.]?\s*([A-Za-z0-9]+)/i) || [])[1] || "Not found";
+    details.registerNo = (text.match(/Register\s*No[:.]?\s*(\d+)/i) || [])[1] || "Not found";
 
-    // Show extracted details
-    output.innerHTML = `<div class="details">
-        <h3>📋 Extracted Student Details</h3>
-        ${college ? "<b>College:</b> " + college[1].trim() + "<br>" : ""}
-        ${className ? "<b>Class:</b> " + className[1].trim() + "<br>" : ""}
-        ${subjectCode ? "<b>Subject Code:</b> " + subjectCode[1].trim() + "<br>" : ""}
-        ${registerNo ? "<b>Register No:</b> " + registerNo[1].trim() + "<br>" : ""}
-    </div>
-    <hr><b>Full Extracted Text:</b><br>` + text;
+    output.innerHTML = `
+      <div class="details">
+        <h3>📋 Student Details Extracted</h3>
+        <b>College:</b> ${details.college}<br>
+        <b>Class:</b> ${details.class}<br>
+        <b>Subject Code:</b> ${details.subjectCode}<br>
+        <b>Register No:</b> ${details.registerNo}<br>
+      </div>
+      <hr>
+      <b>Full Extracted Text:</b><br>${text}
+    `;
 }
 </script>
 </body>
