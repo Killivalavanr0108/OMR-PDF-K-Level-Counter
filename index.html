@@ -1,152 +1,171 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>OMR K-Level OCR Counter</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
-  <style>
-    body {
-      background: #001219;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 0;
-      padding: 0;
-    }
-    h1 { color: #00eaff; margin-top: 30px; }
-    .upload-box {
-      background: rgba(0, 255, 255, 0.1);
-      border: 2px dashed #00eaff;
-      border-radius: 10px;
-      width: 450px;
-      margin: 20px auto;
-      padding: 25px;
-    }
-    input[type="file"] { margin-top: 10px; }
-    #results, #status {
-      width: 600px;
-      margin: 20px auto;
-      text-align: left;
-      background: rgba(255,255,255,0.1);
-      padding: 20px;
-      border-radius: 10px;
-    }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #00eaff; padding: 6px; text-align: center; }
-    th { background: rgba(0,238,255,0.3); }
-    .answered { color: #00ff9d; font-weight: bold; }
-    .unanswered { color: #ff4b4b; font-weight: bold; }
-  </style>
-</head>
-<body>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OMR PDF / Image / DOCX K-Level Extractor</title>
 
-  <h1>OMR K-Level Counter (OCR + PDF)</h1>
-  <div class="upload-box">
-    <p>Upload a <b>PDF / Image / DOCX</b> file:</p>
+<!-- Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.1/dist/tesseract.min.js"></script>
+<script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
+
+<style>
+  body {
+    font-family: "Segoe UI", sans-serif;
+    background: #f8f9fa;
+    margin: 0;
+    padding: 20px;
+    color: #333;
+  }
+  h1 {
+    text-align: center;
+    color: #0066cc;
+  }
+  .container {
+    max-width: 900px;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  }
+  input[type=file] {
+    display: block;
+    margin: 10px auto;
+    padding: 10px;
+  }
+  #output {
+    background: #f0f0f0;
+    border-radius: 6px;
+    padding: 15px;
+    margin-top: 20px;
+    white-space: pre-wrap;
+  }
+  .details {
+    background: #e7f3ff;
+    border-left: 5px solid #007bff;
+    padding: 10px;
+    margin-top: 20px;
+    border-radius: 6px;
+  }
+</style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>OMR Reader – PDF / Image / DOCX</h1>
+    <p>Select a file (.pdf, .jpg, .jpeg, .png, .docx) to extract student details.</p>
     <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.docx">
+    <div id="output">No file uploaded yet.</div>
   </div>
 
-  <div id="status"></div>
-  <div id="results"></div>
+<script>
+document.getElementById("fileInput").addEventListener("change", handleFile);
 
-  <script>
-    document.getElementById("fileInput").addEventListener("change", handleFile);
+async function handleFile(event) {
+    const file = event.target.files[0];
+    const ext = file.name.split('.').pop().toLowerCase();
+    const output = document.getElementById("output");
+    output.textContent = "Processing file: " + file.name + " ...";
 
-    async function handleFile(event) {
-      const file = event.target.files[0];
-      if (!file) return;
+    let text = "";
 
-      const fileType = file.name.split(".").pop().toLowerCase();
-      setStatus("⏳ Processing file... please wait");
-      setResults("");
-
-      let text = "";
-      try {
-        if (fileType === "pdf") {
-          text = await extractTextFromPDF(file);
-        } else if (["jpg", "jpeg", "png"].includes(fileType)) {
-          text = await extractTextFromImage(file);
-        } else if (fileType === "docx") {
-          text = await extractTextFromDocx(file);
-        } else {
-          throw new Error("Unsupported file format!");
-        }
-
-        processOMRText(text);
-      } catch (err) {
-        setStatus("❌ Error: " + err.message);
-      }
+    if (ext === "pdf") {
+        text = await extractPDF(file);
+    } else if (ext === "docx") {
+        text = await extractDocx(file);
+    } else if (["jpg", "jpeg", "png"].includes(ext)) {
+        text = await extractImage(file);
+    } else {
+        output.textContent = "❌ Unsupported file format.";
+        return;
     }
 
-    async function extractTextFromPDF(file) {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let text = "";
-      for (let i = 1; i <= pdf.numPages; i++) {
+    if (text.trim().length === 0) {
+        output.textContent = "⚠️ No text detected.";
+        return;
+    }
+
+    displayText(text);
+}
+
+// ========== PDF HANDLING ==========
+async function extractPDF(file) {
+    const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
+    let text = "";
+
+    for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join(" ") + "\n";
-      }
-      return text;
+        const pageText = content.items.map(item => item.str).join(" ");
+        text += pageText + "\n";
     }
 
-    async function extractTextFromImage(file) {
-      const result = await Tesseract.recognize(file, "eng", {
-        logger: (m) => setStatus("🔍 OCR: " + Math.round(m.progress * 100) + "%")
-      });
-      return result.data.text;
+    // If PDF has no extractable text, use OCR fallback
+    if (text.trim().length === 0) {
+        text = await ocrPDF(file);
+    }
+    return text;
+}
+
+// ========== OCR FALLBACK FOR IMAGE PDF ==========
+async function ocrPDF(file) {
+    const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
+    let fullText = "";
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        const imgData = canvas.toDataURL("image/png");
+        const result = await Tesseract.recognize(imgData, "eng");
+        fullText += result.data.text + "\n";
     }
 
-    async function extractTextFromDocx(file) {
-      const reader = new FileReader();
-      return new Promise((resolve, reject) => {
-        reader.onload = e => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsText(file);
-      });
-    }
+    return fullText;
+}
 
-    function processOMRText(rawText) {
-      const text = rawText.replace(/\s+/g, " ").trim();
-      const regex = /(\d+)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)/g;
+// ========== DOCX HANDLING ==========
+async function extractDocx(file) {
+    const buffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return result.value;
+}
 
-      const counts = { K1:0, K2:0, K3:0, K4:0, K5:0, K6:0 };
-      const details = [];
-      let match;
+// ========== IMAGE HANDLING ==========
+async function extractImage(file) {
+    const img = URL.createObjectURL(file);
+    const result = await Tesseract.recognize(img, "eng");
+    return result.data.text;
+}
 
-      while ((match = regex.exec(text)) !== null) {
-        const qNo = match[1];
-        const options = match.slice(2, 8);
-        const picked = options.findIndex(o => o.includes("●") || o.includes("●") || o.includes("•") || o.includes("⦿") || o.includes("⚫"));
-        if (picked >= 0) counts[`K${picked + 1}`]++;
-        details.push({ qNo, pickedK: picked >= 0 ? `K${picked + 1}` : null });
-      }
+// ========== DISPLAY RESULTS ==========
+function displayText(text) {
+    const output = document.getElementById("output");
+    output.textContent = text;
 
-      const total = Object.values(counts).reduce((a, b) => a + b, 0);
-      const unanswered = details.filter(d => !d.pickedK).length;
+    // Extract student details
+    const college = text.match(/College\s*Name[:.]?\s*(.+)/i);
+    const className = text.match(/Class[:.]?\s*(.+)/i);
+    const subjectCode = text.match(/Subject\s*Code[:.]?\s*([A-Za-z0-9]+)/i);
+    const registerNo = text.match(/Register\s*No[:.]?\s*(\d+)/i);
 
-      setStatus("✅ OCR completed");
-      displayResults(counts, total, unanswered, details);
-    }
-
-    function displayResults(counts, total, unanswered, details) {
-      let html = "<h3>K-Level Counts</h3><table><tr><th>K-Level</th><th>Count</th></tr>";
-      for (const [k, v] of Object.entries(counts)) html += `<tr><td>${k}</td><td>${v}</td></tr>`;
-      html += `<tr><td><b>Total Answered</b></td><td>${total}</td></tr>`;
-      html += `<tr><td><b>Unanswered</b></td><td>${unanswered}</td></tr></table>`;
-
-      html += "<h3>Question-wise Details</h3><ul>";
-      details.forEach(d => {
-        html += `<li>Q${d.qNo}: ${d.pickedK ? `<span class='answered'>${d.pickedK}</span>` : `<span class='unanswered'>❌ Unanswered</span>`}</li>`;
-      });
-      html += "</ul>";
-
-      setResults(html);
-    }
-
-    function setStatus(msg) { document.getElementById("status").innerText = msg; }
-    function setResults(html) { document.getElementById("results").innerHTML = html; }
-  </script>
+    // Show extracted details
+    output.innerHTML = `<div class="details">
+        <h3>📋 Extracted Student Details</h3>
+        ${college ? "<b>College:</b> " + college[1].trim() + "<br>" : ""}
+        ${className ? "<b>Class:</b> " + className[1].trim() + "<br>" : ""}
+        ${subjectCode ? "<b>Subject Code:</b> " + subjectCode[1].trim() + "<br>" : ""}
+        ${registerNo ? "<b>Register No:</b> " + registerNo[1].trim() + "<br>" : ""}
+    </div>
+    <hr><b>Full Extracted Text:</b><br>` + text;
+}
+</script>
 </body>
 </html>
