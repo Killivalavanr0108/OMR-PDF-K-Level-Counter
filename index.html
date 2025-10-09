@@ -1,217 +1,568 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>K-Level Counter – Smart OMR Reader</title>
+  <meta charset="utf-8"/>
+  <title>OMR K-Level Detector — Calibrated</title>
 
-<!-- Libraries -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.1/dist/tesseract.min.js"></script>
-<script async src="https://docs.opencv.org/4.7.0/opencv.js"></script>
+  <!-- pdf.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- OpenCV.js -->
+  <script async src="https://docs.opencv.org/4.7.0/opencv.js"></script>
 
-<style>
-body {
-  font-family: "Segoe UI", sans-serif;
-  background: #f6f8fb;
-  padding: 20px;
-}
-.container {
-  max-width: 950px;
-  margin: auto;
-  background: #fff;
-  padding: 25px;
-  border-radius: 12px;
-  box-shadow: 0 0 15px rgba(0,0,0,0.1);
-}
-h1 {
-  text-align: center;
-  color: #007bff;
-}
-#fileInput {
-  display: block;
-  margin: 20px auto;
-  padding: 10px;
-}
-#status {
-  text-align: center;
-  font-weight: bold;
-  color: #333;
-  margin-bottom: 10px;
-}
-.result-box {
-  background: #eef7ff;
-  padding: 15px;
-  border-radius: 10px;
-  margin-top: 15px;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-}
-th, td {
-  border: 1px solid #007bff33;
-  padding: 8px;
-  text-align: center;
-}
-th {
-  background: #007bff11;
-}
-.answered { color: green; font-weight: bold; }
-.unanswered { color: red; font-weight: bold; }
-</style>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 18px; background:#f3f7fb; color:#0b2545;}
+    h1 { color:#0b5cff; }
+    .layout { display:flex; gap:16px; align-items:flex-start; }
+    .controls { width:420px; }
+    label { display:block; margin-top:8px; font-weight:600; }
+    input[type=file] { margin-top:6px; }
+    canvas { border:1px solid #cfe; max-width:100%; }
+    #overlay { position:absolute; left:0; top:0; pointer-events:none; }
+    .btn { padding:8px 12px; border-radius:6px; border:1px solid #0b5cff; background:#0b5cff; color:white; cursor:pointer; margin-right:6px; }
+    .btn.secondary { background:white; color:#0b5cff; border:1px solid #0b5cff; }
+    .status { margin-top:8px; color:#333; font-weight:600; }
+    .results { background:white; padding:10px; border-radius:8px; box-shadow:0 1px 6px rgba(0,0,0,0.06); margin-top:12px; }
+    #gridEditor { max-height:350px; overflow:auto; border:1px solid #eef; padding:8px; margin-top:8px; }
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #e6eefb;padding:6px;text-align:center}
+  </style>
 </head>
-
 <body>
-<div class="container">
-  <h1>🧮 K-Level Counter – Smart OMR Reader</h1>
-  <p style="text-align:center;">Upload an <b>OMR Image</b> or <b>PDF</b> (TNPSC style).</p>
-  <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png">
-  <div id="status"></div>
-  <div id="results"></div>
-</div>
+  <h1>OMR K-Level Detector — Calibrated (TNPSC style)</h1>
+  <div class="layout">
+    <div class="controls">
+      <label>Upload PDF (first page) or Image (jpg/png)</label>
+      <input id="fileInput" type="file" accept=".pdf,.jpg,.jpeg,.png">
+
+      <label>Table calibration</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="startCorners" class="btn secondary">Start corners</button>
+        <button id="autoDetect" class="btn secondary">Auto-detect corners</button>
+        <button id="resetCorners" class="btn secondary">Reset corners</button>
+      </div>
+      <small>Click 4 corners in image order: TL → TR → BR → BL</small>
+
+      <label>Grid & thresholds</label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div><label>Rows</label><input id="rows" type="number" value="25" style="width:80px"></div>
+        <div><label>Cols</label><input id="cols" type="number" value="6" style="width:80px"></div>
+        <div><label>MinFill</label><input id="minFill" type="number" value="0.08" step="0.01" style="width:80px"></div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <button id="applyGrid" class="btn">Apply Grid</button>
+        <button id="runDetect" class="btn">Run detection</button>
+        <button id="finalize" class="btn secondary">Finalize & Download CSV</button>
+        <button id="downloadImg" class="btn secondary">Download Annotated PNG</button>
+      </div>
+
+      <div class="status" id="status">OpenCV loading — wait a few seconds if first time...</div>
+
+      <div class="results" id="resultsArea">
+        <div id="summary">No detection yet.</div>
+        <div id="gridEditor"></div>
+      </div>
+    </div>
+
+    <div style="flex:1; position:relative;">
+      <div id="canvasWrap" style="position:relative; display:inline-block; background:white;">
+        <canvas id="srcCanvas"></canvas>
+        <canvas id="drawCanvas" style="position:absolute; left:0; top:0;"></canvas>
+      </div>
+    </div>
+  </div>
 
 <script>
-document.getElementById("fileInput").addEventListener("change", handleFile);
+/* ---------- OpenCV ready ---------- */
+let cvReady = false;
+function onOpenCvReady() {
+  cvReady = true;
+  document.getElementById('status').innerText = 'OpenCV loaded.';
+  console.log('OpenCV ready');
+}
+// sometimes cv is available quickly, sometimes set onRuntimeInitialized
+if (typeof cv !== 'undefined') {
+  if (cv['onRuntimeInitialized']) cv['onRuntimeInitialized'] = onOpenCvReady;
+  else onOpenCvReady();
+}
 
-async function handleFile(event) {
-  const file = event.target.files[0];
-  const ext = file.name.split('.').pop().toLowerCase();
-  const status = document.getElementById("status");
-  const results = document.getElementById("results");
+/* ---------- Globals ---------- */
+const fileInput = document.getElementById('fileInput');
+const srcCanvas = document.getElementById('srcCanvas');
+const drawCanvas = document.getElementById('drawCanvas');
+const ctx = srcCanvas.getContext('2d');
+const dctx = drawCanvas.getContext('2d');
+const startCornersBtn = document.getElementById('startCorners');
+const autoDetectBtn = document.getElementById('autoDetect');
+const resetCornersBtn = document.getElementById('resetCorners');
+const applyGridBtn = document.getElementById('applyGrid');
+const runDetectBtn = document.getElementById('runDetect');
+const finalizeBtn = document.getElementById('finalize');
+const downloadImgBtn = document.getElementById('downloadImg');
+const statusEl = document.getElementById('status');
+const summaryEl = document.getElementById('summary');
+const gridEditor = document.getElementById('gridEditor');
 
-  status.textContent = "⏳ Processing " + file.name + "...";
-  results.innerHTML = "";
+let corners = []; // clicked canvas coords (in canvas pixel coordinates)
+let warpCanvas = null; // resulting transformed canvas of table
+let detectionResult = null;
 
-  try {
-    let imageData;
-    if (ext === "pdf") {
-      imageData = await pdfToImage(file);
-    } else if (["jpg", "jpeg", "png"].includes(ext)) {
-      imageData = await readImage(file);
-    } else {
-      throw new Error("Unsupported file type.");
+/* ---------- Load image / PDF first page ---------- */
+fileInput.addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  status('Loading file...');
+  corners = [];
+  renderCorners();
+
+  const ext = f.name.split('.').pop().toLowerCase();
+  if (ext === 'pdf') {
+    // render first page via pdf.js
+    const arrayBuffer = await f.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({scale: 2});
+    srcCanvas.width = viewport.width; srcCanvas.height = viewport.height;
+    drawCanvas.width = viewport.width; drawCanvas.height = viewport.height;
+    await page.render({canvasContext: ctx, viewport: viewport}).promise;
+    status('PDF page rendered. Click Start corners or Auto-detect.');
+  } else {
+    const url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => {
+      // resize if too wide for stability
+      const maxW = 1200;
+      const scale = img.width > maxW ? (maxW / img.width) : 1;
+      srcCanvas.width = Math.round(img.width * scale);
+      srcCanvas.height = Math.round(img.height * scale);
+      drawCanvas.width = srcCanvas.width; drawCanvas.height = srcCanvas.height;
+      ctx.drawImage(img, 0, 0, srcCanvas.width, srcCanvas.height);
+      status('Image loaded. Click Start corners or Auto-detect.');
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+});
+
+/* ---------- Corner calibration UI ---------- */
+let cornerMode = false;
+startCornersBtn.addEventListener('click', () => {
+  cornerMode = true;
+  corners = [];
+  status('Corner mode: click TL → TR → BR → BL on the image.');
+});
+
+drawCanvas.addEventListener('click', (ev) => {
+  if (!cornerMode) return;
+  const rect = drawCanvas.getBoundingClientRect();
+  const x = Math.round((ev.clientX - rect.left) * (drawCanvas.width / rect.width));
+  const y = Math.round((ev.clientY - rect.top) * (drawCanvas.height / rect.height));
+  corners.push([x,y]);
+  renderCorners();
+  if (corners.length === 4) {
+    cornerMode = false;
+    status('Corners set. Click Apply Grid.');
+  } else {
+    status(`Corner ${corners.length} set. Click next.`);
+  }
+});
+
+autoDetectBtn.addEventListener('click', () => {
+  // simple auto-detection: find bounding box of non-white connected region
+  status('Auto-detecting region...');
+  const imgData = ctx.getImageData(0,0,srcCanvas.width, srcCanvas.height);
+  const data = imgData.data;
+  let minX = srcCanvas.width, minY = srcCanvas.height, maxX=0,maxY=0;
+  for (let y=0;y<srcCanvas.height;y++){
+    for (let x=0;x<srcCanvas.width;x++){
+      const i = (y*srcCanvas.width + x)*4;
+      // detect non-white pixel
+      if (data[i] < 240 || data[i+1] < 240 || data[i+2] < 240) {
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      }
     }
+  }
+  if (maxX <= minX || maxY <= minY) {
+    status('Auto-detect failed. Please use Start corners and click manually.');
+    return;
+  }
+  // inset a little and set corners (TL,TR,BR,BL)
+  const pad = 8;
+  corners = [[Math.max(minX-pad,0), Math.max(minY-pad,0)], [Math.min(maxX+pad,srcCanvas.width), Math.max(minY-pad,0)], [Math.min(maxX+pad,srcCanvas.width), Math.min(maxY+pad,srcCanvas.height)], [Math.max(minX-pad,0), Math.min(maxY+pad,srcCanvas.height)]];
+  renderCorners();
+  status('Auto-detected corners. Adjust if needed, then Apply Grid.');
+});
 
-    status.textContent = "🔍 Running OCR and Bubble Analysis...";
-    const text = await extractText(imageData);
-    const visualCount = await detectBubbles(imageData);
-    displayResults(text, visualCount);
-    status.textContent = "✅ Done!";
-  } catch (err) {
-    console.error(err);
-    status.textContent = "❌ Error: " + err.message;
+resetCornersBtn.addEventListener('click', () => { corners=[]; renderCorners(); status('Corners reset.'); });
+
+function renderCorners(){
+  dctx.clearRect(0,0,drawCanvas.width, drawCanvas.height);
+  dctx.lineWidth = 2;
+  for (let i=0;i<corners.length;i++){
+    const [x,y] = corners[i];
+    dctx.fillStyle = 'rgba(255,0,0,0.9)';
+    dctx.beginPath(); dctx.arc(x,y,6,0,Math.PI*2); dctx.fill();
+    dctx.fillStyle = 'black';
+    dctx.font = '12px Arial';
+    dctx.fillText(`${i+1}`, x+8, y+4);
+  }
+  if (corners.length === 4){
+    dctx.strokeStyle = 'rgba(0,150,255,0.9)';
+    dctx.beginPath();
+    for (let i=0;i<4;i++){
+      const [x,y] = corners[i];
+      if (i===0) dctx.moveTo(x,y); else dctx.lineTo(x,y);
+    }
+    dctx.closePath(); dctx.stroke();
   }
 }
 
-// Convert PDF to image
-async function pdfToImage(file) {
-  const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: 2 });
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-  return canvas.toDataURL("image/png");
-}
+/* ---------- Apply perspective warp to table ---------- */
+applyGridBtn.addEventListener('click', () => {
+  if (corners.length !== 4) { alert('Please set 4 corners first (TL→TR→BR→BL)'); return; }
+  // compute destination size using top edge and left edge lengths
+  const wTop = Math.hypot(corners[1][0]-corners[0][0], corners[1][1]-corners[0][1]);
+  const wBot = Math.hypot(corners[2][0]-corners[3][0], corners[2][1]-corners[3][1]);
+  const destW = Math.round(Math.max(wTop, wBot));
+  const hLeft = Math.hypot(corners[3][0]-corners[0][0], corners[3][1]-corners[0][1]);
+  const hRight = Math.hypot(corners[2][0]-corners[1][0], corners[2][1]-corners[1][1]);
+  const destH = Math.round(Math.max(hLeft, hRight));
+  // create offscreen canvas for warp
+  const off = document.createElement('canvas'); off.width = destW; off.height = destH;
+  const octx = off.getContext('2d');
 
-// Read uploaded image
-async function readImage(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.readAsDataURL(file);
-  });
-}
+  // compute homography with linear algebra (use simple canvas transform by mapping corners using setTransform cannot do perspective)
+  // We'll use OpenCV warpPerspective if available; otherwise simple bounding crop fallback
+  if (cvReady) {
+    // get src mat
+    const srcMat = cv.imread(srcCanvas);
+    const srcTri = cv.matFromArray(4,1,cv.CV_32FC2, [corners[0][0],corners[0][1], corners[1][0],corners[1][1], corners[2][0],corners[2][1], corners[3][0],corners[3][1]]);
+    const dstTri = cv.matFromArray(4,1,cv.CV_32FC2, [0,0, destW-1,0, destW-1,destH-1, 0,destH-1]);
+    const M = cv.getPerspectiveTransform(srcTri, dstTri);
+    const dst = new cv.Mat();
+    cv.warpPerspective(srcMat, dst, M, new cv.Size(destW, destH), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+    cv.imshow(off, dst);
+    // cleanup
+    srcMat.delete(); srcTri.delete(); dstTri.delete(); M.delete(); dst.delete();
+  } else {
+    // fallback: bounding rectangle crop (not deskewed) — compute bounding box of corners
+    const minX = Math.max(0, Math.min(...corners.map(p=>p[0])|0));
+    const minY = Math.max(0, Math.min(...corners.map(p=>p[1])|0));
+    const maxX = Math.min(srcCanvas.width, Math.max(...corners.map(p=>p[0])|0));
+    const maxY = Math.min(srcCanvas.height, Math.max(...corners.map(p=>p[1])|0));
+    const w = maxX-minX, h=maxY-minY;
+    octx.drawImage(srcCanvas, minX,minY,w,h, 0,0,destW,destH);
+  }
 
-// OCR using Tesseract
-async function extractText(imageData) {
-  const result = await Tesseract.recognize(imageData, "eng", {
-    logger: info => {
-      document.getElementById("status").textContent = `🔍 OCR Progress: ${Math.round(info.progress * 100)}%`;
+  // show warped crop on srcCanvas for clarity (or store it)
+  srcCanvas.width = off.width; srcCanvas.height = off.height;
+  drawCanvas.width = off.width; drawCanvas.height = off.height;
+  ctx.drawImage(off, 0, 0);
+  status('Warp applied. Now click Run detection.');
+  // also save warpCanvas
+  warpCanvas = document.createElement('canvas'); warpCanvas.width = off.width; warpCanvas.height = off.height;
+  warpCanvas.getContext('2d').drawImage(off,0,0);
+  // clear previous detection result
+  detectionResult = null;
+  summaryEl.innerHTML = 'Grid applied. Click Run detection.';
+});
+
+/* ---------- Detection routine (improved) ---------- */
+function status(txt){ statusEl.innerText = txt; }
+runDetectBtn.addEventListener('click', async () => {
+  if (!warpCanvas) {
+    // if no warp, operate on full canvas
+    warpCanvas = document.createElement('canvas'); warpCanvas.width = srcCanvas.width; warpCanvas.height = srcCanvas.height;
+    warpCanvas.getContext('2d').drawImage(srcCanvas,0,0);
+  }
+  if (!cvReady) { alert('OpenCV not ready. Wait a few seconds and try again.'); return; }
+  status('Detecting bubbles (this may take 2–8s)...');
+
+  // run detection (image processing + kmeans clustering)
+  const res = await detectOnCanvas(warpCanvas);
+  detectionResult = res;
+  renderResultsUI(res);
+  status('Detection finished. Verify grid and correct any rows if needed.');
+});
+
+/* ---------- Core detectOnCanvas ---------- */
+async function detectOnCanvas(canvas) {
+  // read into mat
+  const src = cv.imread(canvas);
+  let gray = new cv.Mat(); cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  // improve contrast
+  let clahe = new cv.Mat();
+  try {
+    // use equalizeHist or CLAHE
+    cv.equalizeHist(gray, clahe);
+  } catch(e){
+    clahe = gray.clone();
+  }
+  // blur to reduce noise
+  let blur = new cv.Mat();
+  cv.bilateralFilter(clahe, blur, 9, 75, 75);
+  // adaptive threshold
+  let th = new cv.Mat();
+  cv.adaptiveThreshold(blur, th, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 41, 12);
+  // morphological closing to fill rings
+  let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5,5));
+  cv.morphologyEx(th, th, cv.MORPH_CLOSE, kernel, new cv.Point(-1,-1), 1);
+  // remove small objects
+  cv.morphologyEx(th, th, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3)), new cv.Point(-1,-1), 1);
+
+  // find contours
+  let contours = new cv.MatVector(); let hierarchy = new cv.Mat();
+  cv.findContours(th, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  // collect circular-ish contours as candidates
+  const candidates = [];
+  for (let i=0;i<contours.size();i++){
+    const cnt = contours.get(i);
+    const area = cv.contourArea(cnt);
+    if (area < 50 || area > (src.cols * src.rows * 0.03)) { cnt.delete(); continue; }
+    const peri = cv.arcLength(cnt, true);
+    if (peri <= 0) { cnt.delete(); continue; }
+    const circularity = 4*Math.PI*area/(peri*peri);
+    if (circularity < 0.3) { cnt.delete(); continue; }
+    const rect = cv.boundingRect(cnt);
+    const M = cv.moments(cnt);
+    if (M.m00 === 0) { cnt.delete(); continue; }
+    const cx = M.m10 / M.m00, cy = M.m01 / M.m00;
+    candidates.push({cnt, area, cx, cy, rect});
+  }
+
+  if (candidates.length === 0) {
+    // cleanup
+    src.delete(); gray.delete(); clahe.delete(); blur.delete(); th.delete(); contours.delete(); hierarchy.delete();
+    throw new Error('No bubble-like contours found — try increasing image contrast or using a better scan.');
+  }
+
+  // prepare arrays for clustering
+  const xs = candidates.map(c=>c.cx);
+  const ys = candidates.map(c=>c.cy);
+
+  // K-means 1D for rows and cols
+  const nRows = Math.max(1, parseInt(document.getElementById('rows').value||25));
+  const nCols = Math.max(1, parseInt(document.getElementById('cols').value||6));
+  function kmeans1D(vals, K){
+    if (vals.length === 0) return {labels:[], centers:[]};
+    // init centers as quantiles
+    const sorted = vals.slice().sort((a,b)=>a-b);
+    const centers = [];
+    for (let k=0;k<K;k++){
+      const idx = Math.floor((k+0.5) * sorted.length / K);
+      centers.push(sorted[Math.min(idx, sorted.length-1)]);
     }
-  });
-  return result.data.text;
-}
-
-// Visual detection using OpenCV
-async function detectBubbles(imageData) {
-  return new Promise((resolve) => {
-    let img = new Image();
-    img.onload = function () {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-
-      let src = cv.imread(canvas);
-      let gray = new cv.Mat();
-      let blur = new cv.Mat();
-      let binary = new cv.Mat();
-
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-      cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0, 0);
-      cv.threshold(blur, binary, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
-
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
-      cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-      let counts = { K1: 0, K2: 0, K3: 0, K4: 0, K5: 0, K6: 0 };
-      for (let i = 0; i < contours.size(); i++) {
-        const cnt = contours.get(i);
-        const area = cv.contourArea(cnt);
-        if (area > 200 && area < 2000) { // bubble size filter
-          const rect = cv.boundingRect(cnt);
-          const yPos = rect.y / img.height;
-          // Approximate bubble positions into K1–K6 bands
-          if (yPos < 0.16) counts.K1++;
-          else if (yPos < 0.33) counts.K2++;
-          else if (yPos < 0.50) counts.K3++;
-          else if (yPos < 0.66) counts.K4++;
-          else if (yPos < 0.83) counts.K5++;
-          else counts.K6++;
+    let labels = new Array(vals.length).fill(0);
+    for (let iter=0; iter<50; iter++){
+      let changed=false;
+      for (let i=0;i<vals.length;i++){
+        let best=0, bestd=Math.abs(vals[i]-centers[0]);
+        for (let c=1;c<K;c++){
+          const d = Math.abs(vals[i]-centers[c]);
+          if (d < bestd){ bestd=d; best=c; }
         }
+        if (labels[i] !== best){ labels[i]=best; changed=true; }
       }
+      // recompute centers
+      for (let c=0;c<K;c++){
+        const arr = vals.filter((v,idx)=>labels[idx]===c);
+        centers[c] = arr.length ? (arr.reduce((s,a)=>s+a,0)/arr.length) : centers[c];
+      }
+      if (!changed) break;
+    }
+    return {labels, centers};
+  }
 
-      src.delete(); gray.delete(); blur.delete(); binary.delete(); contours.delete(); hierarchy.delete();
-      resolve(counts);
-    };
-    img.src = imageData;
-  });
+  // limit K to available points
+  const KR = Math.min(nRows, ys.length);
+  const KC = Math.min(nCols, xs.length);
+  const rowK = kmeans1D(ys, KR);
+  const colK = kmeans1D(xs, KC);
+
+  // map cluster center order
+  const rowOrder = rowK.centers.map((v,i)=>[v,i]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+  const rowMap = {}; rowOrder.forEach((old,newi)=>rowMap[old]=newi);
+  const colOrder = colK.centers.map((v,i)=>[v,i]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+  const colMap = {}; colOrder.forEach((old,newi)=>colMap[old]=newi);
+
+  // assign each candidate to row/col index
+  for (let i=0;i<candidates.length;i++){
+    candidates[i].r = rowMap[rowK.labels[i]];
+    candidates[i].c = colMap[colK.labels[i]];
+  }
+
+  // build grid of cell -> candidate with largest area (if multiple)
+  const rows = KR, cols = KC;
+  const grid = Array.from({length:rows}, ()=>Array(cols).fill(null));
+  for (const c of candidates){
+    if (c.r < rows && c.c < cols) {
+      const prev = grid[c.r][c.c];
+      if (!prev || c.area > prev.area) grid[c.r][c.c] = c;
+    }
+  }
+
+  // compute fill ratio using inner circle vs ring approach
+  const thMat = th; // binary inverted, filled marks appear white (255)
+  const minFillGlobal = Math.max(0.01, parseFloat(document.getElementById('minFill').value || 0.08));
+  const fillRatios = Array.from({length:rows}, ()=>Array(cols).fill(0));
+  for (let r=0;r<rows;r++){
+    for (let ccol=0; ccol<cols; ccol++){
+      const cell = grid[r][ccol];
+      if (!cell) { fillRatios[r][ccol] = 0; continue; }
+      // create mask
+      const mask = new cv.Mat.zeros(thMat.rows, thMat.cols, cv.CV_8U);
+      const contoursVec = new cv.MatVector(); contoursVec.push_back(cell.cnt);
+      cv.drawContours(mask, contoursVec, 0, new cv.Scalar(255), -1);
+      const masked = new cv.Mat();
+      cv.bitwise_and(thMat, thMat, masked, mask);
+      const white = cv.countNonZero(masked);
+      const areaMask = cv.countNonZero(mask);
+      const ratio = areaMask>0 ? (white / areaMask) : 0;
+      fillRatios[r][ccol] = ratio;
+      mask.delete(); contoursVec.delete(); masked.delete();
+    }
+  }
+
+  // per-row adaptive detection
+  const filledGrid = Array.from({length:rows}, ()=>Array(cols).fill(false));
+  for (let r=0;r<rows;r++){
+    const rowMax = Math.max(...fillRatios[r]);
+    const thresh = Math.max(minFillGlobal, rowMax * 0.45);
+    for (let ccol=0; ccol<cols; ccol++){
+      filledGrid[r][ccol] = fillRatios[r][ccol] >= thresh;
+    }
+  }
+
+  // counts & details
+  const kLabels = Array.from({length:cols}, (_,i)=>`K${i+1}`);
+  const counts = {}; kLabels.forEach(k=>counts[k]=0);
+  const details = [];
+  for (let r=0;r<rows;r++){
+    const filledCols = [];
+    for (let ccol=0; ccol<cols; ccol++){
+      if (filledGrid[r][ccol]) filledCols.push(ccol);
+    }
+    if (filledCols.length === 1){
+      const k = kLabels[filledCols[0]]; counts[k]++; details.push({q:r+1,k});
+    } else if (filledCols.length > 1) {
+      // ambiguous -> pick highest ratio
+      const best = filledCols.reduce((b,i)=> fillRatios[r][i] > fillRatios[r][b] ? i : b, filledCols[0]);
+      const k = kLabels[best]; counts[k]++; details.push({q:r+1,k: k + ' (amb)'}); 
+    } else {
+      details.push({q:r+1,k:null});
+    }
+  }
+
+  // annotate: draw circles on drawCanvas
+  dctx.clearRect(0,0,drawCanvas.width, drawCanvas.height);
+  dctx.lineWidth = 2;
+  for (let r=0;r<rows;r++){
+    for (let ccol=0; ccol<cols; ccol++){
+      const cell = grid[r][ccol];
+      if (!cell) continue;
+      const cx = Math.round(cell.cx), cy = Math.round(cell.cy);
+      const radius = Math.max(8, Math.round(Math.sqrt(cell.area/Math.PI)));
+      if (filledGrid[r][ccol]) {
+        dctx.fillStyle = 'rgba(0,200,0,0.25)'; dctx.strokeStyle = 'lime';
+        dctx.beginPath(); dctx.arc(cx,cy,radius,0,Math.PI*2); dctx.fill(); dctx.stroke();
+      } else {
+        dctx.strokeStyle = 'rgba(255,0,0,0.6)'; dctx.beginPath(); dctx.arc(cx,cy,radius,0,Math.PI*2); dctx.stroke();
+      }
+    }
+  }
+
+  // cleanup mats except candidate.contours (we kept them); delete the ones we created
+  src.delete(); gray.delete(); clahe.delete(); blur.delete(); /* keep th? we used thMat */ contours.delete(); hierarchy.delete();
+  // we purposely kept candidate.cnt references — they are Mat objects from findContours (we must NOT double delete).
+  // However to avoid memory leaks when re-running, we will delete candidate cnts later during finalize or new run.
+
+  return {rows, cols, grid, filledGrid, fillRatios, counts, details, kLabels, contourMats: candidates.map(c=>c.cnt)};
 }
 
-// Display combined result
-function displayResults(text, visualCount) {
-  const results = document.getElementById("results");
+/* ---------- Render UI for corrections ---------- */
+function renderResultsUI(res) {
+  const {rows, cols, counts, details, kLabels} = res;
+  // summary
+  let html = `<h3>Detected counts</h3><table><tr><th>K-Level</th><th>Count</th></tr>`;
+  for (const k of kLabels) html += `<tr><td>${k}</td><td id="cnt-${k}">${counts[k]}</td></tr>`;
+  html += `</table>`;
+  summaryEl.innerHTML = html;
 
-  const details = {
-    registerNo: (text.match(/Register\s*No[:.]?\s*(\d+)/i) || [])[1] || "Not found",
-    subjectCode: (text.match(/Subject\s*Code[:.]?\s*([A-Za-z0-9]+)/i) || [])[1] || "Not found",
-    college: (text.match(/College\s*Name[:.]?\s*(.+)/i) || [])[1] || "Not found"
-  };
-
-  const totalAnswered = Object.values(visualCount).reduce((a,b)=>a+b,0);
-
-  results.innerHTML = `
-  <div class="result-box">
-    <h3>📋 Student Details</h3>
-    <b>College:</b> ${details.college}<br>
-    <b>Subject Code:</b> ${details.subjectCode}<br>
-    <b>Register No:</b> ${details.registerNo}<br><hr>
-
-    <h3>📊 K-Level Counter</h3>
-    <table>
-      <tr><th>K-Level</th><th>Detected Bubbles</th></tr>
-      ${Object.entries(visualCount).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('')}
-      <tr><td><b>Total Answered</b></td><td><b>${totalAnswered}</b></td></tr>
-    </table>
-  </div>`;
+  // grid editor
+  let ghtml = `<div><b>Correct / Confirm answers:</b></div><div id='rowsList'>`;
+  for (let r=0;r<rows;r++){
+    ghtml += `<div style='padding:6px;border-bottom:1px dashed #eef'><b>Q${r+1}</b> `;
+    for (let c=0;c<cols;c++){
+      // mark checked if details[r].k matches
+      const detected = (details[r].k && details[r].k.indexOf(`K${c+1}`)===0);
+      ghtml += `<label style='margin-left:8px'><input type='radio' name='q${r}' value='${c}' ${detected? 'checked':''}> ${kLabels[c]}</label>`;
+    }
+    const noneChecked = (!details[r].k) ? 'checked' : '';
+    ghtml += ` <label style="margin-left:12px;color:#b33"><input type='radio' name='q${r}' value='none' ${noneChecked}> None</label>`;
+    ghtml += `</div>`;
+  }
+  ghtml += `</div>`;
+  gridEditor.innerHTML = ghtml;
 }
+
+/* ---------- Finalize & Download CSV + Annotated PNG ---------- */
+finalizeBtn.addEventListener('click', () => {
+  if (!detectionResult) { alert('Run detection first.'); return; }
+  const {rows, cols, kLabels} = detectionResult;
+  const finalCounts = {}; kLabels.forEach(k=>finalCounts[k]=0);
+  const detailsOut = [];
+  for (let r=0;r<rows;r++){
+    const radios = document.getElementsByName('q'+r);
+    let picked = '';
+    for (let i=0;i<radios.length;i++){
+      if (radios[i].checked){
+        if (radios[i].value !== 'none') picked = kLabels[parseInt(radios[i].value)];
+        break;
+      }
+    }
+    if (picked) finalCounts[picked] += 1;
+    detailsOut.push({question: r+1, picked});
+  }
+
+  // show updated counts
+  for (const k in finalCounts) {
+    const el = document.getElementById(`cnt-${k}`);
+    if (el) el.innerText = finalCounts[k];
+  }
+
+  // produce CSV
+  let csv = 'Question,Picked\n';
+  detailsOut.forEach(d => csv += `${d.question},${d.picked}\n`);
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'omr_questionwise.csv'; a.click();
+
+  status('Finalized. CSV downloaded. You can also download annotated PNG.');
+});
+
+/* annotated PNG */
+downloadImgBtn.addEventListener('click', () => {
+  // merge base canvas + drawCanvas to produce single PNG
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const cc = c.getContext('2d');
+  cc.drawImage(srcCanvas, 0, 0);
+  cc.drawImage(drawCanvas, 0, 0);
+  const url = c.toDataURL('image/png');
+  const a = document.createElement('a'); a.href = url; a.download = 'omr_annotated.png'; a.click();
+});
+
+/* ---------- Utility: release contour mats to prevent memory leak ---------- */
+function cleanupContourMats(res) {
+  if (!res || !res.contourMats) return;
+  for (const m of res.contourMats) {
+    try { m.delete(); } catch(e) {}
+  }
+}
+
+/* ---------- End script ---------- */
 </script>
 </body>
 </html>
