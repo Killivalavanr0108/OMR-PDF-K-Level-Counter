@@ -1,303 +1,335 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>OMR PDF K-Level Counter (OCR + Word Export)</title>
+<meta charset="utf-8" />
+<title>OMR OCR → Word (Debug Friendly)</title>
 
-  <!-- Libraries -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docx@8.1.1/build/index.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+<!-- pdf.js worker setting handled below -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Tesseract (we use createWorker) -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+<!-- docx (may be large) -->
+<script src="https://cdn.jsdelivr.net/npm/docx@8.1.1/build/index.umd.js"></script>
+<!-- file-saver for downloads -->
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
-  <style>
-    /* 🌌 Video Background */
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      font-family: Arial, sans-serif;
-      color: white;
-      overflow-x: hidden;
-    }
-    .video-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: -2; }
-    .video-bg video {
-      position: absolute;
-      top: 50%; left: 50%;
-      min-width: 100%; min-height: 100%;
-      transform: translate(-50%, -50%);
-      object-fit: cover;
-      filter: brightness(0.85) blur(1px);
-    }
-    .overlay {
-      position: fixed; top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.3);
-      z-index: -1;
-    }
-
-    /* 📘 Content */
-    .content {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 40px;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    h1 {
-      color: #00eaff;
-      text-shadow: 0 0 15px #00eaff;
-      text-align: center;
-    }
-    .college-header {
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(0, 170, 255, 0.15);
-      padding: 15px;
-      border-radius: 12px;
-      margin: 20px auto;
-      width: 700px;
-      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
-      flex-wrap: wrap;
-    }
-    .college-header img { height: 80px; margin-right: 20px; border-radius: 8px; }
-    .college-header h2 { color: #00eaff; margin: 10px; text-align: center; }
-
-    .upload-box {
-      text-align: center;
-      margin: 20px auto;
-      padding: 30px;
-      border: 2px dashed #00eaff;
-      border-radius: 10px;
-      background: rgba(0, 230, 255, 0.08);
-      width: 460px;
-      backdrop-filter: blur(6px);
-      box-shadow: 0 0 20px rgba(0, 238, 255, 0.3);
-    }
-    input[type="file"] { margin-top: 10px; color: #00eaff; }
-
-    #status, #student-info, #results {
-      background: rgba(255, 255, 255, 0.08);
-      padding: 20px;
-      margin: 20px auto;
-      width: 600px;
-      border-radius: 10px;
-      box-shadow: 0 0 15px rgba(0, 200, 255, 0.2);
-      backdrop-filter: blur(6px);
-      word-wrap: break-word;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      border: 1px solid rgba(0, 238, 255, 0.3);
-      padding: 8px;
-      text-align: center;
-    }
-    th { background: rgba(0, 238, 255, 0.2); }
-
-    .answered { color: #00ff9d; font-weight: bold; }
-    .unanswered { color: #ff4b4b; font-weight: bold; }
-
-    button {
-      background: #00eaff;
-      color: black;
-      font-weight: bold;
-      border: none;
-      padding: 10px 18px;
-      border-radius: 8px;
-      cursor: pointer;
-      margin-top: 15px;
-      box-shadow: 0 0 10px rgba(0, 238, 255, 0.6);
-    }
-    button:hover { background: #00bfff; }
-
-    @media (max-width: 768px) {
-      .college-header, .upload-box, #status, #student-info, #results { width: 90%; padding: 15px; }
-      .college-header img { height: 60px; margin-right: 10px; }
-      h1 { font-size: 1.5em; }
-    }
-  </style>
+<style>
+  body,html{height:100%;margin:0;font-family:Arial;color:#e6fbff;background:#00181f;}
+  .wrap{max-width:980px;margin:28px auto;padding:24px;background:rgba(0,10,20,0.45);
+        border-radius:12px;box-shadow:0 8px 30px rgba(0,200,255,0.08);}
+  h1{color:#00eaff;text-shadow:0 0 10px rgba(0,234,255,0.12)}
+  .row{display:flex;gap:12px;align-items:center;margin:12px 0;}
+  input[type=file]{color:#00eaff}
+  #status{padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;color:#cfeff7;}
+  #student-info,#results{margin-top:12px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;color:#cfeff7}
+  button{background:#00eaff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:700}
+  pre{white-space:pre-wrap;color:#bfefff}
+  table{color:#dff; border-collapse:collapse}
+  td,th{border:1px solid rgba(0,200,255,0.12);padding:6px 8px}
+</style>
 </head>
-
 <body>
-  <!-- 🎥 Background -->
-  <div class="video-bg">
-    <video autoplay muted loop playsinline>
-      <source src="Animation video.mp4" type="video/mp4">
-      Your browser does not support HTML5 video.
-    </video>
-  </div>
-  <div class="overlay"></div>
-
-  <!-- 📘 Content -->
-  <div class="content">
-    <div class="college-header">
-      <img src="college_token.avif" alt="College Logo">
-      <h2>Government Arts College, Nandanam, Chennai-35</h2>
-    </div>
-
-    <h1>OMR PDF K-Level Counter (OCR + Word Export)</h1>
-
-    <div class="upload-box">
-      <p>Select a <b>.pdf</b> file to process using OCR:</p>
-      <input type="file" id="fileInput" accept=".pdf">
-    </div>
-
-    <div id="status"></div>
-    <div id="student-info"></div>
-    <div id="results"></div>
-    <button id="downloadBtn" style="display:none;">⬇️ Download Word Report</button>
+<div class="wrap">
+  <h1>OMR OCR → Word (Debug)</h1>
+  <div class="row">
+    <input id="fileInput" type="file" accept=".pdf">
+    <button id="startBtn">Start OCR</button>
+    <button id="downloadBtn" style="display:none">⬇️ Download Word Report</button>
   </div>
 
-  <!-- ⚙️ OCR + Word Export Logic -->
-  <script>
-    document.getElementById("fileInput").addEventListener("change", handleFile);
-    document.getElementById("downloadBtn").addEventListener("click", generateWord);
+  <div id="status">Status: waiting for file...</div>
+  <div id="student-info"></div>
+  <div id="results"></div>
 
-    let ocrData = { text: "", info: {}, results: {} };
+  <h3>Console / Debug log (open DevTools if something fails)</h3>
+  <pre id="logArea"></pre>
+</div>
 
-    async function handleFile(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      setStatus("⏳ Running OCR... Please wait...");
-      setResults("");
-      setStudentInfo("");
-      document.getElementById("downloadBtn").style.display = "none";
+<script>
+(async ()=>{
 
-      try {
-        const extractedText = await extractTextWithOCR(file);
-        const info = extractStudentInfo(extractedText);
-        const results = countKLevels(extractedText);
+// --- Helpful debug logger to page and console
+function log(msg){
+  console.log(msg);
+  const el = document.getElementById('logArea');
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
 
-        ocrData = { text: extractedText, info, results };
+// --- Make sure pdf.js worker is set
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+log("pdf.js workerSrc set.");
 
-        // Display Results
-        showInfo(info);
-        showResults(results);
+// DOM
+const fileInput = document.getElementById('fileInput');
+const startBtn = document.getElementById('startBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const statusEl = document.getElementById('status');
 
-        setStatus("✅ OCR Completed Successfully!");
-        document.getElementById("downloadBtn").style.display = "block";
-      } catch (err) {
-        console.error(err);
-        setStatus("❌ Error: " + err.message);
+let lastOCR = { text: "", info: null, results: null };
+
+// UI helpers
+function setStatus(s){ statusEl.textContent = "Status: " + s; log(s); }
+function showInfo(info){
+  const out = document.getElementById('student-info');
+  out.innerHTML = `<h3>Student Info</h3>
+  <table><tr><th>Field</th><th>Value</th></tr>
+  <tr><td>Name</td><td>${info.studentName||'Not found'}</td></tr>
+  <tr><td>Register No</td><td>${info.regNo||'Not found'}</td></tr>
+  <tr><td>Department</td><td>${info.department||'Not found'}</td></tr>
+  <tr><td>Subject</td><td>${info.subjectName||'Not found'}</td></tr>
+  <tr><td>Subject Code</td><td>${info.subjectCode||'Not found'}</td></tr>
+  </table>`;
+}
+function showResults(results){
+  const out = document.getElementById('results');
+  const counts = results.counts;
+  let html = `<h3>K-level Summary</h3><table><tr><th>K</th><th>Count</th></tr>`;
+  ["K1","K2","K3","K4","K5","K6"].forEach(k => html += `<tr><td>${k}</td><td>${counts[k]||0}</td></tr>`);
+  html += `</table><p>Total answered: <b>${results.total}</b> — Unanswered: <b>${results.unanswered}</b></p>`;
+  html += "<h4>Per-question</h4><ol>";
+  results.details.forEach(d=> html += `<li>Q${d.q}: ${d.pickedK || 'Unanswered'}</li>`);
+  html += "</ol>";
+  out.innerHTML = html;
+}
+
+// --- Robust OCR extraction using Tesseract worker
+async function extractTextWithTesseractFromPDF(file){
+  setStatus("Loading PDF...");
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  log(`PDF pages: ${pdf.numPages}`);
+
+  // create tesseract worker once
+  setStatus("Initializing OCR worker...");
+  const { createWorker } = Tesseract;
+  const worker = createWorker({
+    logger: m => {
+      // show progress for each page OCR
+      if (m.status && m.progress!=null) setStatus(`${m.status} ${(m.progress*100).toFixed(0)}%`);
+      log("Tess: " + JSON.stringify(m));
+    }
+  });
+
+  await worker.load();
+  await worker.loadLanguage('eng');
+  await worker.initialize('eng');
+
+  let aggregateText = "";
+  for(let p=1; p<=pdf.numPages; p++){
+    setStatus(`Rendering page ${p}/${pdf.numPages}`);
+    const page = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    setStatus(`OCR page ${p} ...`);
+    const { data: { text } } = await worker.recognize(canvas);
+    log(`OCR page ${p} length=${text.length}`);
+    aggregateText += `\n\n--- PAGE ${p} ---\n` + text;
+  }
+
+  setStatus("Terminating OCR worker...");
+  await worker.terminate();
+  setStatus("OCR finished.");
+  return aggregateText;
+}
+
+// --- More tolerant K-level parser
+function parseStudentInfoFromText(text){
+  // normalize spaces
+  const t = text.replace(/\r/g,'\n').replace(/\n+/g,'\n').replace(/[ \t]+/g,' ').trim();
+  // try common patterns
+  const nameMatch = t.match(/Student\s*Name[:.\- ]+\s*([A-Za-z\u0B80-\u0BFF .]{2,80})/i);
+  const regMatch = t.match(/Register\s*(?:No|No.)[:.\- ]+\s*([A-Za-z0-9\-\/]+)/i);
+  const deptMatch = t.match(/Department[:.\- ]+\s*([A-Za-z0-9 .\-]{2,60})/i);
+  const subjNameMatch = t.match(/Subject\s*Name[:.\- ]+\s*([A-Za-z0-9 .\-]{2,80})/i);
+  const subjCodeMatch = t.match(/Subject\s*Code[:.\- ]+\s*([A-Za-z0-9\-]+)/i);
+
+  return {
+    studentName: nameMatch ? nameMatch[1].trim() : null,
+    regNo: regMatch ? regMatch[1].trim() : null,
+    department: deptMatch ? deptMatch[1].trim() : null,
+    subjectName: subjNameMatch ? subjNameMatch[1].trim() : null,
+    subjectCode: subjCodeMatch ? subjCodeMatch[1].trim() : null
+  };
+}
+
+function countKLevelsFromText(rawText){
+  // Normalize some OCR quirks
+  let text = rawText.replace(/\u00A0/g,' ').replace(/\r/g,'\n');
+  // replace weird bullets with single char
+  text = text.replace(/[•●◉]/g,'*');
+  // split into question blocks by lines that start with number
+  const blocks = text.split(/\n(?=\s*\d+\b)/);
+  const counts = { K1:0,K2:0,K3:0,K4:0,K5:0,K6:0 };
+  const details = [];
+
+  blocks.forEach(block=>{
+    const qMatch = block.match(/^\s*(\d{1,3})\b/);
+    if(!qMatch) return;
+    const q = qMatch[1];
+
+    // find all "(...)" groups, reasonable OCR may produce variants but this is robust
+    let choices = Array.from(block.matchAll(/\(([^)]{0,30})\)/g), m=> m[1].trim());
+    // sometimes OCR uses other separators, try to vendor-split by 6 tokens if less
+    if(choices.length < 6){
+      // fallback: find tokens that resemble options like "K1 (o) (e) ..."
+      // try splitting the line after the number
+      const tail = block.substring(block.indexOf(qMatch[0]) + qMatch[0].length);
+      // split by multiple spaces
+      const parts = tail.split(/\s{2,}/).map(s=>s.trim()).filter(Boolean);
+      // try to pick tokens that look like parenthesized or single-chars
+      if(parts.length>=6){
+        choices = parts.slice(0,6).map(p=>{
+          // strip surrounding parentheses if any
+          return (p.match(/^\(?(.+?)\)?$/)? p.match(/^\(?(.+?)\)?$/)[1] : p).trim();
+        });
       }
     }
 
-    function setStatus(msg) { document.getElementById("status").innerText = msg; }
-    function setResults(html) { document.getElementById("results").innerHTML = html; }
-    function setStudentInfo(html) { document.getElementById("student-info").innerHTML = html; }
-
-    async function extractTextWithOCR(file) {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullText = "";
-
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 2 });
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: context, viewport }).promise;
-
-        const result = await Tesseract.recognize(canvas, "eng");
-        fullText += result.data.text + "\n";
+    // If still less than 6, skip (too noisy)
+    if(choices.length < 6){
+      // attempt to find 6 candidates by searching for single-letter tokens
+      const tokens = block.split(/\s+/).filter(Boolean);
+      // find substrings that look like '(o)' or single-letter tokens near each other
+      const parens = block.match(/\(.{0,5}\)/g) || [];
+      if(parens.length >=6) choices = parens.slice(0,6).map(p=>p.replace(/^\(|\)$/g,'').trim());
+      else {
+        // give up for this block but record unanswered
+        details.push({ q, pickedK: null });
+        return;
       }
-      return fullText;
     }
 
-    function extractStudentInfo(text) {
-      text = text.replace(/\s+/g, " ");
-      const nameMatch = text.match(/Student\s*Name[:.\- ]+([A-Za-z .]+)/i);
-      const regMatch = text.match(/Register\s*No[:.\- ]+([A-Za-z0-9]+)/i);
-      const deptMatch = text.match(/Department[:.\- ]+([A-Za-z0-9.\- ]+)/i);
-      const subjNameMatch = text.match(/Subject\s*Name[:.\- ]+([A-Za-z0-9 .]+)/i);
-      const subjCodeMatch = text.match(/Subject\s*Code[:.\- ]+([A-Za-z0-9]+)/i);
-      return {
-        studentName: nameMatch ? nameMatch[1].trim() : null,
-        regNo: regMatch ? regMatch[1].trim() : null,
-        department: deptMatch ? deptMatch[1].trim() : null,
-        subjectName: subjNameMatch ? subjNameMatch[1].trim() : null,
-        subjectCode: subjCodeMatch ? subjCodeMatch[1].trim() : null
-      };
+    // Decide which option is filled using heuristics:
+    // Consider: a choice is filled if it contains any of:
+    // letters other than 'o' (e.g. e, m, c), '*', 'x', '+', '/', '\', digits, or special bullet
+    function isFilled(choice){
+      if(!choice) return false;
+      const s = choice.replace(/[() \t\r\n]/g,'').trim();
+      if(!s) return false;
+      // common 'empty' signs we treat as empty: 'o', 'O', '0'
+      if (/^[oO0]+$/.test(s)) return false;
+      // If contains bullets or star or x or letters -> filled
+      if (/[●•*xX+×\/\\@]/.test(s)) return true;
+      // letters that indicate mark like e, m, c (from your sample)
+      if (/[emcE]/.test(s)) return true;
+      // otherwise treat as not filled
+      return false;
     }
 
-    function countKLevels(rawText) {
-      const counts = { K1:0, K2:0, K3:0, K4:0, K5:0, K6:0 };
-      const qRegex = /^(\d+)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)\s+\((.*?)\)/gm;
-      const details = [];
-      let match;
-
-      while ((match = qRegex.exec(rawText)) !== null) {
-        const qNo = match[1];
-        const choices = match.slice(2, 8);
-        const pickedIndex = choices.findIndex(c => /(●|•|@|e|‹|›|\+|m|c|\*|\^|E|O)/i.test(c));
-        if (pickedIndex >= 0) counts[`K${pickedIndex+1}`]++;
-        details.push({ q: qNo, pickedK: pickedIndex >= 0 ? `K${pickedIndex+1}` : null });
-      }
-
-      const total = Object.values(counts).reduce((a,b)=>a+b,0);
-      const unanswered = details.filter(d => !d.pickedK).length;
-      return { counts, total, unanswered, details };
+    const pickIndex = choices.findIndex(ch => isFilled(ch));
+    if(pickIndex >= 0){
+      const k = `K${pickIndex+1}`;
+      if(counts[k] !== undefined) counts[k] += 1;
+      details.push({ q, pickedK: k });
+    } else {
+      details.push({ q, pickedK: null });
     }
+  });
 
-    function showInfo(info) {
-      let html = "<h3>Student Information</h3><table>";
-      html += `<tr><td><b>Student Name</b></td><td>${info.studentName || "Not Found"}</td></tr>`;
-      html += `<tr><td><b>Register No</b></td><td>${info.regNo || "Not Found"}</td></tr>`;
-      html += `<tr><td><b>Department</b></td><td>${info.department || "Not Found"}</td></tr>`;
-      html += `<tr><td><b>Subject Name</b></td><td>${info.subjectName || "Not Found"}</td></tr>`;
-      html += `<tr><td><b>Subject Code</b></td><td>${info.subjectCode || "Not Found"}</td></tr>`;
-      html += "</table>";
-      setStudentInfo(html);
-    }
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  const unanswered = details.filter(d=>!d.pickedK).length;
+  return { counts, total, unanswered, details };
+}
 
-    function showResults(results) {
-      let html = "<h3>K-Level Counts</h3><table><tr><th>K-Level</th><th>Count</th></tr>";
-      for (const k of ["K1","K2","K3","K4","K5","K6"]) {
-        html += `<tr><td>${k}</td><td>${results.counts[k]}</td></tr>`;
-      }
-      html += `<tr><td><b>Total Answered</b></td><td><b>${results.total}</b></td></tr>`;
-      html += `<tr><td><b>Total Unanswered</b></td><td><b>${results.unanswered}</b></td></tr>`;
-      html += `<tr><td><b>Total Questions</b></td><td><b>${results.details.length}</b></td></tr>`;
-      html += "</table>";
-      setResults(html);
-    }
+// --- Start OCR button
+startBtn.addEventListener('click', async ()=>{
+  const file = fileInput.files[0];
+  if(!file){
+    alert("Please choose a PDF first.");
+    return;
+  }
 
-    // 🧾 Export to Word (.docx)
-    async function generateWord() {
-      const { text, info, results } = ocrData;
-      const doc = new docx.Document({
-        sections: [{
-          children: [
-            new docx.Paragraph({ text: "OMR OCR Report", heading: docx.HeadingLevel.HEADING_1 }),
-            new docx.Paragraph({ text: `Student Name: ${info.studentName || "Not Found"}` }),
-            new docx.Paragraph({ text: `Register No: ${info.regNo || "Not Found"}` }),
-            new docx.Paragraph({ text: `Department: ${info.department || "Not Found"}` }),
-            new docx.Paragraph({ text: `Subject Name: ${info.subjectName || "Not Found"}` }),
-            new docx.Paragraph({ text: `Subject Code: ${info.subjectCode || "Not Found"}` }),
-            new docx.Paragraph({ text: "" }),
-            new docx.Paragraph({ text: "K-Level Summary:", heading: docx.HeadingLevel.HEADING_2 }),
-            new docx.Paragraph({ text: JSON.stringify(results.counts, null, 2) }),
-            new docx.Paragraph({ text: `Total Answered: ${results.total}` }),
-            new docx.Paragraph({ text: `Unanswered: ${results.unanswered}` }),
-            new docx.Paragraph({ text: "" }),
-            new docx.Paragraph({ text: "Extracted Text (OCR):", heading: docx.HeadingLevel.HEADING_2 }),
-            new docx.Paragraph({ text })
-          ]
-        }]
+  // VERY IMPORTANT: If you opened the HTML as file://, Tesseract/pdfjs worker loads may fail.
+  setStatus("Starting OCR pipeline...");
+  log("Tip: If this hangs or fails, run this page via a local web server (python -m http.server).");
+  try{
+    const ocrText = await extractTextWithTesseractFromPDF(file);
+    log("Full OCR length: " + ocrText.length);
+    // parse info
+    const info = parseStudentInfoFromText(ocrText);
+    const results = countKLevelsFromText(ocrText);
+    lastOCR = { text: ocrText, info, results };
+    showInfo(info);
+    showResults(results);
+    setStatus("OCR done. You can download a Word report.");
+    downloadBtn.style.display = "inline-block";
+  }catch(err){
+    setStatus("ERROR during OCR: see console");
+    log("ERROR: " + (err && err.message ? err.message : String(err)));
+  }
+});
+
+// --- Word generation (docx). Fallback to plain .doc if docx lib missing
+downloadBtn.addEventListener('click', async ()=>{
+  if(!lastOCR || !lastOCR.text){
+    alert("No OCR result to export. Run OCR first.");
+    return;
+  }
+  setStatus("Generating Word file...");
+  try{
+    if(typeof docx !== 'undefined' && docx.Document){
+      const { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, TextRun } = docx;
+      const doc = new Document();
+      // Header
+      doc.addSection({
+        properties: {},
+        children: [
+          new Paragraph({ text: "OMR OCR Report", heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: `Student Name: ${lastOCR.info.studentName || 'Not found'}` }),
+          new Paragraph({ text: `Register No: ${lastOCR.info.regNo || 'Not found'}` }),
+          new Paragraph({ text: `Department: ${lastOCR.info.department || 'Not found'}` }),
+          new Paragraph({ text: `Subject: ${lastOCR.info.subjectName || 'Not found'}` }),
+          new Paragraph({ text: `Subject Code: ${lastOCR.info.subjectCode || 'Not found'}` }),
+          new Paragraph({ text: "" }),
+          new Paragraph({ text: "K-Level Summary", heading: HeadingLevel.HEADING_2 }),
+        ]
       });
 
-      const blob = await docx.Packer.toBlob(doc);
-      saveAs(blob, `OMR_Report_${info.regNo || "student"}.docx`);
+      // Add K-level table
+      const rows = [
+        new TableRow({ children: [ new TableCell({ children: [ new Paragraph("K-Level") ] }), new TableCell({ children:[ new Paragraph("Count") ] }) ] })
+      ];
+      ["K1","K2","K3","K4","K5","K6"].forEach(k=>{
+        rows.push(new TableRow({ children: [ new TableCell({ children:[ new Paragraph(k) ] }), new TableCell({ children:[ new Paragraph(String(lastOCR.results.counts[k] || 0)) ] }) ] }));
+      });
+      rows.push(new TableRow({ children: [ new TableCell({ children:[ new Paragraph("Total Answered") ] }), new TableCell({ children:[ new Paragraph(String(lastOCR.results.total)) ] }) ] }));
+      rows.push(new TableRow({ children: [ new TableCell({ children:[ new Paragraph("Unanswered") ] }), new TableCell({ children:[ new Paragraph(String(lastOCR.results.unanswered)) ] }) ] }));
+
+      const table = new Table({ rows });
+      doc.addSection({ children: [table, new Paragraph({ text: "" }), new Paragraph({ text: "Per-question answers", heading: HeadingLevel.HEADING_2 }) ] });
+
+      // per-question list as paragraphs
+      lastOCR.results.details.forEach(d=>{
+        doc.addSection({ children: [ new Paragraph({ text: `Q${d.q}: ${d.pickedK || 'Unanswered'}` }) ] });
+      });
+
+      // final: OCR raw text (shortened or full)
+      doc.addSection({ children: [ new Paragraph({ text: "", }), new Paragraph({ text: "OCR Extracted Text (full)", heading: HeadingLevel.HEADING_2 }), new Paragraph({ text: lastOCR.text.slice(0,10000) }), new Paragraph({ text: "...(truncated)" }) ] });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `OMR_Report_${lastOCR.info.regNo||'student'}.docx`);
+      setStatus("Word file generated & download started.");
+      log("Word created (docx library).");
+    } else {
+      // fallback: plain text file saved as .doc (Word will open)
+      const plain = `OMR OCR Report\n\nStudent Name: ${lastOCR.info.studentName||''}\nRegister No: ${lastOCR.info.regNo||''}\n\nK-level counts: ${JSON.stringify(lastOCR.results.counts,null,2)}\n\n---OCR Text---\n\n${lastOCR.text}`;
+      const blob = new Blob([plain], { type: "application/msword" });
+      saveAs(blob, `OMR_Report_${lastOCR.info.regNo||'student'}.doc`);
+      setStatus("Plain .doc file generated (docx lib not found).");
+      log("Fallback plain .doc saved.");
     }
-  </script>
+  }catch(err){
+    setStatus("ERROR generating Word: check console.");
+    log("ERROR Word: " + (err && err.message ? err.message : String(err)));
+  }
+});
+
+})(); // end IIFE
+</script>
 </body>
 </html>
