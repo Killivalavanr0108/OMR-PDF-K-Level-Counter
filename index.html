@@ -1,335 +1,529 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>OMR OCR → Word (Debug Friendly)</title>
+<meta charset="utf-8">
+<title>Merged OMR → K-Level Counter</title>
 
-<!-- pdf.js worker setting handled below -->
+<!-- OpenCV.js and pdf.js -->
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<!-- Tesseract (we use createWorker) -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
-<!-- docx (may be large) -->
-<script src="https://cdn.jsdelivr.net/npm/docx@8.1.1/build/index.umd.js"></script>
-<!-- file-saver for downloads -->
-<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
 <style>
-  body,html{height:100%;margin:0;font-family:Arial;color:#e6fbff;background:#00181f;}
-  .wrap{max-width:980px;margin:28px auto;padding:24px;background:rgba(0,10,20,0.45);
-        border-radius:12px;box-shadow:0 8px 30px rgba(0,200,255,0.08);}
-  h1{color:#00eaff;text-shadow:0 0 10px rgba(0,234,255,0.12)}
-  .row{display:flex;gap:12px;align-items:center;margin:12px 0;}
-  input[type=file]{color:#00eaff}
-  #status{padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;color:#cfeff7;}
-  #student-info,#results{margin-top:12px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;color:#cfeff7}
-  button{background:#00eaff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:700}
-  pre{white-space:pre-wrap;color:#bfefff}
-  table{color:#dff; border-collapse:collapse}
-  td,th{border:1px solid rgba(0,200,255,0.12);padding:6px 8px}
+  :root {
+    --bg: #00171a; --cyan: #00eaff; --muted: #bfeeff;
+  }
+  body,html{height:100%;margin:0;font-family:Inter,Arial, sans-serif;background:linear-gradient(180deg,#00171a,#00121a);color:var(--muted);padding:18px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{color:var(--cyan);margin:0 0 8px 0;text-shadow:0 0 12px rgba(0,234,255,0.06);}
+  .panel{background:rgba(255,255,255,0.03);padding:14px;border-radius:10px;margin-top:12px;box-shadow:0 8px 30px rgba(0,200,255,0.02);}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  label{color:var(--muted);font-size:0.95rem}
+  input[type=file]{color:var(--cyan)}
+  select,input[type=number],button,input[type=range]{padding:8px;border-radius:8px;border:1px solid rgba(0,234,255,0.08);background:transparent;color:var(--muted)}
+  button{background:var(--cyan);border:none;color:#00171a;font-weight:700;cursor:pointer}
+  canvas{max-width:100%;border-radius:8px;display:block;margin-top:12px;background:#082026}
+  table{width:100%;border-collapse:collapse;margin-top:12px;color:var(--muted)}
+  th,td{border:1px solid rgba(0,200,255,0.08);padding:8px;text-align:center}
+  .small{font-size:0.9rem;color:#bfeeff}
+  .download-btn{background:var(--cyan);padding:8px 12px;border-radius:8px;cursor:pointer;border:none;color:#00171a;margin-left:8px}
+  #chartCanvas{height:160px;width:100%;display:block;margin-top:12px;background:transparent}
+  .controls {display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .flex-1{flex:1}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>OMR OCR → Word (Debug)</h1>
-  <div class="row">
-    <input id="fileInput" type="file" accept=".pdf">
-    <button id="startBtn">Start OCR</button>
-    <button id="downloadBtn" style="display:none">⬇️ Download Word Report</button>
+  <div class="wrap">
+    <h1>OMR → K-Level (Merged) — Bubble Detector + K1–K6 Counter</h1>
+
+    <div class="panel">
+      <div class="row controls">
+        <div>
+          <label>Upload image or PDF (first page will be used)</label><br>
+          <input id="fileInput" type="file" accept="image/*,.pdf">
+        </div>
+
+        <div>
+          <label>Choices per question</label><br>
+          <select id="choicesCount">
+            <option value="6" selected>6 (K1 - K6)</option>
+            <option value="5">5</option>
+            <option value="4">4</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Fill threshold</label><br>
+          <input id="threshold" type="range" min="30" max="220" value="100">
+          <span id="thVal" class="small">100</span>
+        </div>
+
+        <div>
+          <label>Min bubble area (px)</label><br>
+          <input id="minArea" type="number" value="300" style="width:100px">
+        </div>
+
+        <div>
+          <label>&nbsp;</label><br>
+          <button id="processBtn">🔍 Detect & Convert → K-Levels</button>
+        </div>
+
+        <div style="margin-left:auto">
+          <button id="downloadCsv" class="download-btn" style="display:none">⬇ CSV</button>
+          <button id="downloadPdf" class="download-btn" style="display:none">⬇ PDF Report</button>
+        </div>
+      </div>
+
+      <div id="status" class="small" style="margin-top:10px">Status: waiting for file & OpenCV...</div>
+    </div>
+
+    <div class="panel row" style="margin-top:16px">
+      <div style="flex:1">
+        <label>Rendered Page / Debug Canvas</label>
+        <canvas id="canvasOut"></canvas>
+      </div>
+
+      <div style="width:360px">
+        <label>Detected results</label>
+        <div id="resultsList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
+        <div id="countsDiv" style="margin-top:10px"></div>
+        <canvas id="chartCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:12px">
+      <label>Extracted Student Info (from PDF text if available)</label>
+      <div id="studentInfo" style="margin-top:8px"></div>
+    </div>
   </div>
 
-  <div id="status">Status: waiting for file...</div>
-  <div id="student-info"></div>
-  <div id="results"></div>
-
-  <h3>Console / Debug log (open DevTools if something fails)</h3>
-  <pre id="logArea"></pre>
-</div>
-
 <script>
-(async ()=>{
+  // Configure pdf.js worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
-// --- Helpful debug logger to page and console
-function log(msg){
-  console.log(msg);
-  const el = document.getElementById('logArea');
-  el.textContent += msg + "\n";
-  el.scrollTop = el.scrollHeight;
-}
+  // Elements
+  const fileInput = document.getElementById('fileInput');
+  const processBtn = document.getElementById('processBtn');
+  const canvas = document.getElementById('canvasOut');
+  const ctx = canvas.getContext('2d');
+  const statusEl = document.getElementById('status');
+  const resultsList = document.getElementById('resultsList');
+  const countsDiv = document.getElementById('countsDiv');
+  const chartCanvas = document.getElementById('chartCanvas');
+  const studentInfoDiv = document.getElementById('studentInfo');
+  const downloadCsv = document.getElementById('downloadCsv');
+  const downloadPdf = document.getElementById('downloadPdf');
+  const thresholdEl = document.getElementById('threshold');
+  const thVal = document.getElementById('thVal');
+  const minAreaEl = document.getElementById('minArea');
+  const choicesCountEl = document.getElementById('choicesCount');
 
-// --- Make sure pdf.js worker is set
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-log("pdf.js workerSrc set.");
+  let fileData = null;     // File object
+  let lastDetection = null; // predictions
+  let currentImage = null;  // Image loaded into canvas
+  let pdfRawText = "";      // extracted text if PDF was uploaded
 
-// DOM
-const fileInput = document.getElementById('fileInput');
-const startBtn = document.getElementById('startBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const statusEl = document.getElementById('status');
+  thresholdEl.addEventListener('input', ()=> thVal.innerText = thresholdEl.value);
 
-let lastOCR = { text: "", info: null, results: null };
-
-// UI helpers
-function setStatus(s){ statusEl.textContent = "Status: " + s; log(s); }
-function showInfo(info){
-  const out = document.getElementById('student-info');
-  out.innerHTML = `<h3>Student Info</h3>
-  <table><tr><th>Field</th><th>Value</th></tr>
-  <tr><td>Name</td><td>${info.studentName||'Not found'}</td></tr>
-  <tr><td>Register No</td><td>${info.regNo||'Not found'}</td></tr>
-  <tr><td>Department</td><td>${info.department||'Not found'}</td></tr>
-  <tr><td>Subject</td><td>${info.subjectName||'Not found'}</td></tr>
-  <tr><td>Subject Code</td><td>${info.subjectCode||'Not found'}</td></tr>
-  </table>`;
-}
-function showResults(results){
-  const out = document.getElementById('results');
-  const counts = results.counts;
-  let html = `<h3>K-level Summary</h3><table><tr><th>K</th><th>Count</th></tr>`;
-  ["K1","K2","K3","K4","K5","K6"].forEach(k => html += `<tr><td>${k}</td><td>${counts[k]||0}</td></tr>`);
-  html += `</table><p>Total answered: <b>${results.total}</b> — Unanswered: <b>${results.unanswered}</b></p>`;
-  html += "<h4>Per-question</h4><ol>";
-  results.details.forEach(d=> html += `<li>Q${d.q}: ${d.pickedK || 'Unanswered'}</li>`);
-  html += "</ol>";
-  out.innerHTML = html;
-}
-
-// --- Robust OCR extraction using Tesseract worker
-async function extractTextWithTesseractFromPDF(file){
-  setStatus("Loading PDF...");
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  log(`PDF pages: ${pdf.numPages}`);
-
-  // create tesseract worker once
-  setStatus("Initializing OCR worker...");
-  const { createWorker } = Tesseract;
-  const worker = createWorker({
-    logger: m => {
-      // show progress for each page OCR
-      if (m.status && m.progress!=null) setStatus(`${m.status} ${(m.progress*100).toFixed(0)}%`);
-      log("Tess: " + JSON.stringify(m));
+  fileInput.addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if(!f) return;
+    fileData = f;
+    resultsList.innerHTML = ""; countsDiv.innerHTML = ""; studentInfoDiv.innerHTML = "";
+    downloadCsv.style.display = 'none'; downloadPdf.style.display = 'none';
+    setStatus("Loading file...");
+    if(f.type === "application/pdf" || f.name.toLowerCase().endsWith('.pdf')) {
+      // render page 1 to canvas and extract text
+      const arrayBuffer = await f.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      // extract text across pages (we will still run detection only on first page's rendered image)
+      pdfRawText = "";
+      for(let p=1;p<=pdf.numPages;p++){
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        const pageText = content.items.map(item=>item.str).join(" ");
+        pdfRawText += pageText + "\n\n";
+      }
+      // Render first page
+      const page1 = await pdf.getPage(1);
+      const viewport = page1.getViewport({ scale: 2.0 });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page1.render({ canvasContext: ctx, viewport }).promise;
+      currentImage = new Image();
+      currentImage.src = canvas.toDataURL();
+      setStatus("PDF page rendered. Ready to detect. (Text extracted if present)");
+      const info = extractStudentInfo(pdfRawText);
+      renderStudentInfo(info);
+    } else {
+      // image
+      const img = new Image();
+      img.onload = () => {
+        // scale down if too wide
+        const maxW = Math.min(img.width, 1600);
+        const scale = maxW / img.width;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        currentImage = img;
+        setStatus("Image loaded. Ready to detect.");
+      };
+      img.onerror = () => setStatus("Failed to load image.");
+      img.src = URL.createObjectURL(f);
     }
   });
 
-  await worker.load();
-  await worker.loadLanguage('eng');
-  await worker.initialize('eng');
+  processBtn.addEventListener('click', async () => {
+    if(!canvas.width || !canvas.height) { alert("Please upload an image or PDF first."); return; }
+    setStatus("Waiting for OpenCV.js...");
+    await waitForOpenCV();
+    setStatus("OpenCV ready. Detecting bubbles...");
+    try {
+      await detectBubblesAndConvert();
+    } catch(err) {
+      console.error(err);
+      setStatus("Error: " + err.message);
+    }
+  });
 
-  let aggregateText = "";
-  for(let p=1; p<=pdf.numPages; p++){
-    setStatus(`Rendering page ${p}/${pdf.numPages}`);
-    const page = await pdf.getPage(p);
-    const viewport = page.getViewport({ scale: 2.0 });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
-    const ctx = canvas.getContext('2d');
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    setStatus(`OCR page ${p} ...`);
-    const { data: { text } } = await worker.recognize(canvas);
-    log(`OCR page ${p} length=${text.length}`);
-    aggregateText += `\n\n--- PAGE ${p} ---\n` + text;
+  function setStatus(msg){ statusEl.innerText = "Status: " + msg; console.log(msg); }
+
+  function waitForOpenCV(){
+    return new Promise((resolve, reject) => {
+      const tryReady = () => {
+        if(window.cv && cv.Mat) resolve();
+        else setTimeout(tryReady, 200);
+      };
+      tryReady();
+    });
   }
 
-  setStatus("Terminating OCR worker...");
-  await worker.terminate();
-  setStatus("OCR finished.");
-  return aggregateText;
-}
+  // --- Detection (adapted from your TNPSC detector) ---
+  async function detectBubblesAndConvert(){
+    const src = cv.imread(canvas);
+    let gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    let blurred = new cv.Mat();
+    cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
 
-// --- More tolerant K-level parser
-function parseStudentInfoFromText(text){
-  // normalize spaces
-  const t = text.replace(/\r/g,'\n').replace(/\n+/g,'\n').replace(/[ \t]+/g,' ').trim();
-  // try common patterns
-  const nameMatch = t.match(/Student\s*Name[:.\- ]+\s*([A-Za-z\u0B80-\u0BFF .]{2,80})/i);
-  const regMatch = t.match(/Register\s*(?:No|No.)[:.\- ]+\s*([A-Za-z0-9\-\/]+)/i);
-  const deptMatch = t.match(/Department[:.\- ]+\s*([A-Za-z0-9 .\-]{2,60})/i);
-  const subjNameMatch = t.match(/Subject\s*Name[:.\- ]+\s*([A-Za-z0-9 .\-]{2,80})/i);
-  const subjCodeMatch = t.match(/Subject\s*Code[:.\- ]+\s*([A-Za-z0-9\-]+)/i);
+    let thresh = new cv.Mat();
+    cv.adaptiveThreshold(blurred, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 8);
 
-  return {
-    studentName: nameMatch ? nameMatch[1].trim() : null,
-    regNo: regMatch ? regMatch[1].trim() : null,
-    department: deptMatch ? deptMatch[1].trim() : null,
-    subjectName: subjNameMatch ? subjNameMatch[1].trim() : null,
-    subjectCode: subjCodeMatch ? subjCodeMatch[1].trim() : null
-  };
-}
+    let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
+    cv.morphologyEx(thresh, thresh, cv.MORPH_CLOSE, kernel);
 
-function countKLevelsFromText(rawText){
-  // Normalize some OCR quirks
-  let text = rawText.replace(/\u00A0/g,' ').replace(/\r/g,'\n');
-  // replace weird bullets with single char
-  text = text.replace(/[•●◉]/g,'*');
-  // split into question blocks by lines that start with number
-  const blocks = text.split(/\n(?=\s*\d+\b)/);
-  const counts = { K1:0,K2:0,K3:0,K4:0,K5:0,K6:0 };
-  const details = [];
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-  blocks.forEach(block=>{
-    const qMatch = block.match(/^\s*(\d{1,3})\b/);
-    if(!qMatch) return;
-    const q = qMatch[1];
-
-    // find all "(...)" groups, reasonable OCR may produce variants but this is robust
-    let choices = Array.from(block.matchAll(/\(([^)]{0,30})\)/g), m=> m[1].trim());
-    // sometimes OCR uses other separators, try to vendor-split by 6 tokens if less
-    if(choices.length < 6){
-      // fallback: find tokens that resemble options like "K1 (o) (e) ..."
-      // try splitting the line after the number
-      const tail = block.substring(block.indexOf(qMatch[0]) + qMatch[0].length);
-      // split by multiple spaces
-      const parts = tail.split(/\s{2,}/).map(s=>s.trim()).filter(Boolean);
-      // try to pick tokens that look like parenthesized or single-chars
-      if(parts.length>=6){
-        choices = parts.slice(0,6).map(p=>{
-          // strip surrounding parentheses if any
-          return (p.match(/^\(?(.+?)\)?$/)? p.match(/^\(?(.+?)\)?$/)[1] : p).trim();
-        });
+    const minArea = parseInt(minAreaEl.value) || 200;
+    const circles = [];
+    for(let i=0;i<contours.size();i++){
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt);
+      if(area < minArea) { cnt.delete(); continue; }
+      const peri = cv.arcLength(cnt, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+      const rect = cv.boundingRect(approx);
+      const w = rect.width, h = rect.height;
+      const ratio = w / h;
+      const circularity = 4 * Math.PI * area / (peri * peri + 1e-6);
+      if(circularity > 0.35 && ratio > 0.5 && ratio < 1.6) {
+        const cx = rect.x + rect.width/2;
+        const cy = rect.y + rect.height/2;
+        circles.push({area, cx, cy, w:rect.width, h:rect.height, rect});
       }
+      approx.delete(); cnt.delete();
     }
 
-    // If still less than 6, skip (too noisy)
-    if(choices.length < 6){
-      // attempt to find 6 candidates by searching for single-letter tokens
-      const tokens = block.split(/\s+/).filter(Boolean);
-      // find substrings that look like '(o)' or single-letter tokens near each other
-      const parens = block.match(/\(.{0,5}\)/g) || [];
-      if(parens.length >=6) choices = parens.slice(0,6).map(p=>p.replace(/^\(|\)$/g,'').trim());
+    if(circles.length === 0){
+      setStatus("No bubbles found. Try lowering min area or use clearer scan.");
+      // cleanup
+      src.delete(); gray.delete(); blurred.delete(); thresh.delete(); contours.delete(); hierarchy.delete(); kernel.delete();
+      return;
+    }
+
+    // cluster into rows
+    circles.sort((a,b)=>a.cy - b.cy);
+    const rows = [];
+    const yTol = Math.max(10, Math.round(Math.min(canvas.height, canvas.width) * 0.01));
+    circles.forEach(c => {
+      let placed=false;
+      for(const r of rows){
+        if(Math.abs(r.avgY - c.cy) <= yTol){
+          r.items.push(c);
+          r.avgY = r.items.reduce((s,x)=>s+x.cy,0)/r.items.length;
+          placed=true; break;
+        }
+      }
+      if(!placed) rows.push({avgY:c.cy, items:[c]});
+    });
+
+    const choicesCount = parseInt(choicesCountEl.value) || 6;
+    const filteredRows = rows.filter(r=>r.items.length >= Math.max(2, Math.floor(choicesCount*0.6)));
+    filteredRows.forEach(r=> r.items.sort((a,b)=>a.cx - b.cx));
+
+    // split rows with many bubbles into groups
+    const finalRows = [];
+    filteredRows.forEach(r => {
+      const items = r.items;
+      if(items.length === choicesCount) finalRows.push(items);
+      else if(items.length > choicesCount){
+        const groups = Math.round(items.length / choicesCount);
+        const perGroup = Math.round(items.length / groups);
+        for(let g=0; g<groups; g++){
+          const start = g*perGroup;
+          const slice = items.slice(start, start+perGroup);
+          if(slice.length >= choicesCount){
+            const step = slice.length / choicesCount;
+            const pick=[];
+            for(let k=0;k<choicesCount;k++) pick.push(slice[Math.floor(k*step)]);
+            finalRows.push(pick);
+          } else finalRows.push(slice);
+        }
+      } else finalRows.push(items);
+    });
+
+    const candidateRows = finalRows.filter(items => items.length >= Math.max(choicesCount - 1, 2));
+    candidateRows.sort((a,b) => (a.reduce((s,x)=>s+x.cy,0)/a.length) - (b.reduce((s,x)=>s+x.cy,0)/b.length));
+
+    // compute fill scores and pick selected
+    const th = parseInt(thresholdEl.value) || 100;
+    const predictions = [];
+    ctx.drawImage(canvas, 0, 0); // redraw base
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#00ff9d';
+    ctx.fillStyle = 'rgba(0,255,157,0.12)';
+    let qno = 1;
+    for(const items of candidateRows){
+      let group = items;
+      if(items.length > choicesCount){
+        const step = items.length / choicesCount;
+        group = [];
+        for(let k=0;k<choicesCount;k++) group.push(items[Math.floor(k*step)]);
+      }
+
+      group.sort((a,b)=>a.cx - b.cx);
+      const rowResult = { q: qno, choices: [] };
+
+      for(let i=0;i<group.length;i++){
+        const c = group[i];
+        const bx = Math.max(0, Math.round(c.cx - c.w*0.55));
+        const by = Math.max(0, Math.round(c.cy - c.h*0.55));
+        const bw = Math.min(canvas.width - bx, Math.round(c.w * 1.1));
+        const bh = Math.min(canvas.height - by, Math.round(c.h * 1.1));
+        const imageData = ctx.getImageData(bx, by, bw, bh);
+        let sum=0;
+        for(let p=0;p<imageData.data.length;p+=4){
+          const r = imageData.data[p], g = imageData.data[p+1], b2 = imageData.data[p+2];
+          const lum = 0.299*r + 0.587*g + 0.114*b2;
+          sum += lum;
+        }
+        const avg = sum / (bw * bh);
+        const fillScore = 255 - avg;
+        const filled = fillScore > th;
+        rowResult.choices.push({cx:c.cx,cy:c.cy,w:c.w,h:c.h,fillScore,filled,rect:{x:bx,y:by,w:bw,h:bh}});
+        // draw rect
+        ctx.beginPath();
+        ctx.rect(bx, by, bw, bh);
+        ctx.strokeStyle = filled ? '#00ff9d' : '#ff6b6b';
+        ctx.stroke();
+        if(filled){
+          ctx.fillStyle = 'rgba(0,255,157,0.12)';
+          ctx.fillRect(bx,by,bw,bh);
+        }
+      }
+
+      // decide selected
+      const filledChoices = rowResult.choices.map((c,i)=>({i,score:c.fillScore,filled:c.filled})).filter(x=>x.filled);
+      let selected = null;
+      if(filledChoices.length === 0){
+        const maxC = rowResult.choices.map((c,i)=>({i,score:c.fillScore})).reduce((a,b)=> a.score>b.score ? a : b, {i:0,score:-1});
+        if(maxC.score > th*0.6) selected = maxC.i;
+      } else if(filledChoices.length === 1) selected = filledChoices[0].i;
       else {
-        // give up for this block but record unanswered
-        details.push({ q, pickedK: null });
-        return;
+        const best = filledChoices.reduce((a,b)=> a.score>b.score ? a : b);
+        selected = best.i;
       }
+
+      rowResult.selectedIndex = (selected===null||selected===undefined) ? null : selected;
+      // map to letter (A,B,C...) and then to K-level (K1..)
+      const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      rowResult.selectedLetter = (rowResult.selectedIndex===null) ? null : letters[rowResult.selectedIndex];
+      predictions.push(rowResult);
+
+      // annotate
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#00eaff';
+      const annotateX = Math.max(4, group[0].cx - 24);
+      const annotateY = Math.max(14, group[0].cy - 12);
+      ctx.fillText('Q'+qno, annotateX, annotateY);
+      qno++;
     }
 
-    // Decide which option is filled using heuristics:
-    // Consider: a choice is filled if it contains any of:
-    // letters other than 'o' (e.g. e, m, c), '*', 'x', '+', '/', '\', digits, or special bullet
-    function isFilled(choice){
-      if(!choice) return false;
-      const s = choice.replace(/[() \t\r\n]/g,'').trim();
-      if(!s) return false;
-      // common 'empty' signs we treat as empty: 'o', 'O', '0'
-      if (/^[oO0]+$/.test(s)) return false;
-      // If contains bullets or star or x or letters -> filled
-      if (/[●•*xX+×\/\\@]/.test(s)) return true;
-      // letters that indicate mark like e, m, c (from your sample)
-      if (/[emcE]/.test(s)) return true;
-      // otherwise treat as not filled
-      return false;
-    }
+    // cleanup mats
+    src.delete(); gray.delete(); blurred.delete(); thresh.delete(); contours.delete(); hierarchy.delete(); kernel.delete();
 
-    const pickIndex = choices.findIndex(ch => isFilled(ch));
-    if(pickIndex >= 0){
-      const k = `K${pickIndex+1}`;
-      if(counts[k] !== undefined) counts[k] += 1;
-      details.push({ q, pickedK: k });
-    } else {
-      details.push({ q, pickedK: null });
-    }
+    lastDetection = predictions;
+    setStatus("Detection finished. Questions processed: " + predictions.length);
+    renderResultsAndCounts(predictions);
+    downloadCsv.style.display = predictions.length ? 'inline-block' : 'none';
+    downloadPdf.style.display = predictions.length ? 'inline-block' : 'none';
+  }
+
+  function renderResultsAndCounts(predictions){
+    resultsList.innerHTML = "";
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    thead.innerHTML = "<tr><th>Q#</th><th>Selected</th><th>Confidence</th><th>K-Level</th></tr>";
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+
+    // K-level counts
+    const choicesCount = parseInt(choicesCountEl.value) || 6;
+    const kcount = {};
+    for(let i=1;i<=choicesCount;i++) kcount['K'+i]=0;
+
+    predictions.forEach((r, idx)=>{
+      const tr = document.createElement('tr');
+      const selLetter = r.selectedLetter || 'Unanswered';
+      const conf = (r.selectedIndex !== null && r.selectedIndex !== undefined) ? r.choices[r.selectedIndex].fillScore.toFixed(1) : (r.choices.reduce((a,b)=>Math.max(a,b.fillScore),0)).toFixed(1);
+      const kLevel = (r.selectedIndex===null || r.selectedIndex===undefined) ? '' : ('K'+(r.selectedIndex+1));
+      if(kLevel) kcount[kLevel] = (kcount[kLevel]||0) + 1;
+      tr.innerHTML = `<td>${r.q}</td><td>${selLetter}</td><td>${conf}</td><td>${kLevel || '—'}</td>`;
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    resultsList.appendChild(table);
+
+    // summary
+    const totalAnswered = Object.values(kcount).reduce((a,b)=>a+b,0);
+    const unanswered = predictions.length - totalAnswered;
+    let summaryHtml = "<div class='small'><b>Summary</b><br>";
+    summaryHtml += Object.entries(kcount).map(([k,v])=>`${k}: ${v}`).join(' | ');
+    summaryHtml += `<br>Total Answered: ${totalAnswered} | Unanswered: ${unanswered} | Total Qs: ${predictions.length}</div>`;
+    countsDiv.innerHTML = summaryHtml;
+
+    // draw simple bar chart
+    drawBarChart(kcount);
+  }
+
+  function drawBarChart(kcount){
+    // simple chart on chartCanvas
+    const ctx2 = chartCanvas.getContext('2d');
+    chartCanvas.width = chartCanvas.clientWidth;
+    chartCanvas.height = 160;
+    ctx2.clearRect(0,0,chartCanvas.width, chartCanvas.height);
+    const keys = Object.keys(kcount);
+    const maxVal = Math.max(...Object.values(kcount),1);
+    const padding = 24;
+    const w = (chartCanvas.width - padding*2) / keys.length;
+    keys.forEach((k,i)=>{
+      const val = kcount[k];
+      const h = (val / maxVal) * (chartCanvas.height - 60);
+      const x = padding + i * w + 10;
+      const y = chartCanvas.height - h - 30;
+      // bar
+      ctx2.fillStyle = '#00eaff';
+      ctx2.fillRect(x, y, w-24, h);
+      // label
+      ctx2.fillStyle = '#bfeeff';
+      ctx2.font = '12px Arial';
+      ctx2.fillText(k, x, chartCanvas.height - 12);
+      ctx2.fillText(val, x, y - 6);
+    });
+  }
+
+  // --- CSV export ---
+  downloadCsv.addEventListener('click', ()=>{
+    if(!lastDetection) return alert("No detection available.");
+    const rows = ['Question,Selected,Klevel,Confidence'];
+    lastDetection.forEach(r=>{
+      const selectedLetter = r.selectedLetter || '';
+      const k = (r.selectedIndex===null||r.selectedIndex===undefined) ? '' : ('K'+(r.selectedIndex+1));
+      const conf = (r.selectedIndex===null||r.selectedIndex===undefined) ? (r.choices.reduce((a,b)=>Math.max(a,b.fillScore),0)).toFixed(1) : r.choices[r.selectedIndex].fillScore.toFixed(1);
+      rows.push(`${r.q},${selectedLetter},${k},${conf}`);
+    });
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download='omr_klevels.csv'; a.click();
+    URL.revokeObjectURL(url);
   });
 
-  const total = Object.values(counts).reduce((a,b)=>a+b,0);
-  const unanswered = details.filter(d=>!d.pickedK).length;
-  return { counts, total, unanswered, details };
-}
+  // --- PDF report export (simple) ---
+  downloadPdf.addEventListener('click', ()=>{
+    if(!lastDetection) return alert("No detection available.");
+    // Build a simple HTML report and open print dialog (user can Save as PDF).
+    const win = window.open('','_blank','toolbar=0,location=0,menubar=0');
+    const choicesCount = parseInt(choicesCountEl.value) || 6;
+    const kcount = {};
+    for(let i=1;i<=choicesCount;i++) kcount['K'+i]=0;
+    lastDetection.forEach(r=>{
+      if(r.selectedIndex!==null && r.selectedIndex!==undefined) kcount['K'+(r.selectedIndex+1)]++;
+    });
+    const totalAnswered = Object.values(kcount).reduce((a,b)=>a+b,0);
+    const unanswered = lastDetection.length - totalAnswered;
 
-// --- Start OCR button
-startBtn.addEventListener('click', async ()=>{
-  const file = fileInput.files[0];
-  if(!file){
-    alert("Please choose a PDF first.");
-    return;
-  }
-
-  // VERY IMPORTANT: If you opened the HTML as file://, Tesseract/pdfjs worker loads may fail.
-  setStatus("Starting OCR pipeline...");
-  log("Tip: If this hangs or fails, run this page via a local web server (python -m http.server).");
-  try{
-    const ocrText = await extractTextWithTesseractFromPDF(file);
-    log("Full OCR length: " + ocrText.length);
-    // parse info
-    const info = parseStudentInfoFromText(ocrText);
-    const results = countKLevelsFromText(ocrText);
-    lastOCR = { text: ocrText, info, results };
-    showInfo(info);
-    showResults(results);
-    setStatus("OCR done. You can download a Word report.");
-    downloadBtn.style.display = "inline-block";
-  }catch(err){
-    setStatus("ERROR during OCR: see console");
-    log("ERROR: " + (err && err.message ? err.message : String(err)));
-  }
-});
-
-// --- Word generation (docx). Fallback to plain .doc if docx lib missing
-downloadBtn.addEventListener('click', async ()=>{
-  if(!lastOCR || !lastOCR.text){
-    alert("No OCR result to export. Run OCR first.");
-    return;
-  }
-  setStatus("Generating Word file...");
-  try{
-    if(typeof docx !== 'undefined' && docx.Document){
-      const { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, TextRun } = docx;
-      const doc = new Document();
-      // Header
-      doc.addSection({
-        properties: {},
-        children: [
-          new Paragraph({ text: "OMR OCR Report", heading: HeadingLevel.HEADING_1 }),
-          new Paragraph({ text: `Student Name: ${lastOCR.info.studentName || 'Not found'}` }),
-          new Paragraph({ text: `Register No: ${lastOCR.info.regNo || 'Not found'}` }),
-          new Paragraph({ text: `Department: ${lastOCR.info.department || 'Not found'}` }),
-          new Paragraph({ text: `Subject: ${lastOCR.info.subjectName || 'Not found'}` }),
-          new Paragraph({ text: `Subject Code: ${lastOCR.info.subjectCode || 'Not found'}` }),
-          new Paragraph({ text: "" }),
-          new Paragraph({ text: "K-Level Summary", heading: HeadingLevel.HEADING_2 }),
-        ]
-      });
-
-      // Add K-level table
-      const rows = [
-        new TableRow({ children: [ new TableCell({ children: [ new Paragraph("K-Level") ] }), new TableCell({ children:[ new Paragraph("Count") ] }) ] })
-      ];
-      ["K1","K2","K3","K4","K5","K6"].forEach(k=>{
-        rows.push(new TableRow({ children: [ new TableCell({ children:[ new Paragraph(k) ] }), new TableCell({ children:[ new Paragraph(String(lastOCR.results.counts[k] || 0)) ] }) ] }));
-      });
-      rows.push(new TableRow({ children: [ new TableCell({ children:[ new Paragraph("Total Answered") ] }), new TableCell({ children:[ new Paragraph(String(lastOCR.results.total)) ] }) ] }));
-      rows.push(new TableRow({ children: [ new TableCell({ children:[ new Paragraph("Unanswered") ] }), new TableCell({ children:[ new Paragraph(String(lastOCR.results.unanswered)) ] }) ] }));
-
-      const table = new Table({ rows });
-      doc.addSection({ children: [table, new Paragraph({ text: "" }), new Paragraph({ text: "Per-question answers", heading: HeadingLevel.HEADING_2 }) ] });
-
-      // per-question list as paragraphs
-      lastOCR.results.details.forEach(d=>{
-        doc.addSection({ children: [ new Paragraph({ text: `Q${d.q}: ${d.pickedK || 'Unanswered'}` }) ] });
-      });
-
-      // final: OCR raw text (shortened or full)
-      doc.addSection({ children: [ new Paragraph({ text: "", }), new Paragraph({ text: "OCR Extracted Text (full)", heading: HeadingLevel.HEADING_2 }), new Paragraph({ text: lastOCR.text.slice(0,10000) }), new Paragraph({ text: "...(truncated)" }) ] });
-
-      const blob = await Packer.toBlob(doc);
-      saveAs(blob, `OMR_Report_${lastOCR.info.regNo||'student'}.docx`);
-      setStatus("Word file generated & download started.");
-      log("Word created (docx library).");
-    } else {
-      // fallback: plain text file saved as .doc (Word will open)
-      const plain = `OMR OCR Report\n\nStudent Name: ${lastOCR.info.studentName||''}\nRegister No: ${lastOCR.info.regNo||''}\n\nK-level counts: ${JSON.stringify(lastOCR.results.counts,null,2)}\n\n---OCR Text---\n\n${lastOCR.text}`;
-      const blob = new Blob([plain], { type: "application/msword" });
-      saveAs(blob, `OMR_Report_${lastOCR.info.regNo||'student'}.doc`);
-      setStatus("Plain .doc file generated (docx lib not found).");
-      log("Fallback plain .doc saved.");
+    let html = `<html><head><title>OMR K-Level Report</title>
+      <style>body{font-family:Arial;background:white;color:#111;padding:20px}h1{color:#00aeee}</style></head><body>`;
+    html += `<h1>OMR K-Level Report</h1>`;
+    if(pdfRawText) {
+      const info = extractStudentInfo(pdfRawText);
+      html += `<h3>Student Info</h3><table border="1" cellpadding="6">`;
+      html += `<tr><td><b>Name</b></td><td>${info.studentName||''}</td></tr>`;
+      html += `<tr><td><b>Register No</b></td><td>${info.regNo||''}</td></tr>`;
+      html += `<tr><td><b>Department</b></td><td>${info.department||''}</td></tr>`;
+      html += `<tr><td><b>Subject</b></td><td>${info.subjectName||''}</td></tr>`;
+      html += `<tr><td><b>Subject Code</b></td><td>${info.subjectCode||''}</td></tr>`;
+      html += `</table>`;
     }
-  }catch(err){
-    setStatus("ERROR generating Word: check console.");
-    log("ERROR Word: " + (err && err.message ? err.message : String(err)));
-  }
-});
+    html += `<h3>K-Level Counts</h3><table border="1" cellpadding="6"><tr><th>K-Level</th><th>Count</th></tr>`;
+    for(const k in kcount) html += `<tr><td>${k}</td><td>${kcount[k]}</td></tr>`;
+    html += `<tr><td><b>Total Answered</b></td><td>${totalAnswered}</td></tr>`;
+    html += `<tr><td><b>Unanswered</b></td><td>${unanswered}</td></tr>`;
+    html += `</table><h3>Question-wise</h3><ol>`;
+    lastDetection.forEach(r=>{
+      const k = (r.selectedIndex===null || r.selectedIndex===undefined) ? 'UNANSWERED' : ('K'+(r.selectedIndex+1));
+      html += `<li>Q${r.q}: ${k}</li>`;
+    });
+    html += `</ol><script>setTimeout(()=>{window.print();},300);</script></body></html>`;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  });
 
-})(); // end IIFE
+  // --- Student info extraction (similar to your K-level parser) ---
+  function extractStudentInfo(text){
+    if(!text) return {};
+    let t = text.replace(/\s+/g, " ");
+    // try to make keys simpler
+    t = t.replace(/Student\s*Name\s*[:\-\s]+/ig, "StudentName:");
+    t = t.replace(/Register\s*No\s*[:\-\s]+/ig, "RegisterNo:");
+    t = t.replace(/Department\s*[:\-\s]+/ig, "Department:");
+    t = t.replace(/Subject\s*Name\s*[:\-\s]+/ig, "SubjectName:");
+    t = t.replace(/Subject\s*Code\s*[:\-\s]+/ig, "SubjectCode:");
+    const name = (t.match(/StudentName:([A-Za-z0-9 .]+)/i) || [])[1] || null;
+    const reg = (t.match(/RegisterNo:([A-Za-z0-9]+)/i) || [])[1] || null;
+    const dept = (t.match(/Department:([A-Za-z0-9 .]+)/i) || [])[1] || null;
+    const subj = (t.match(/SubjectName:([A-Za-z0-9 .]+)/i) || [])[1] || null;
+    const subjcode = (t.match(/SubjectCode:([A-Za-z0-9]+)/i) || [])[1] || null;
+    return { studentName: name && name.trim(), regNo: reg && reg.trim(), department: dept && dept.trim(), subjectName: subj && subj.trim(), subjectCode: subjcode && subjcode.trim() };
+  }
+
+  function renderStudentInfo(info){
+    if(!info || Object.keys(info).length===0){ studentInfoDiv.innerHTML = "<div class='small'>No text-extracted student info found.</div>"; return; }
+    let html = "<table><tr><td><b>Student Name</b></td><td>"+(info.studentName||'Not found')+"</td></tr>";
+    html += "<tr><td><b>Register No</b></td><td>"+(info.regNo||'Not found')+"</td></tr>";
+    html += "<tr><td><b>Department</b></td><td>"+(info.department||'Not found')+"</td></tr>";
+    html += "<tr><td><b>Subject Name</b></td><td>"+(info.subjectName||'Not found')+"</td></tr>";
+    html += "<tr><td><b>Subject Code</b></td><td>"+(info.subjectCode||'Not found')+"</td></tr>";
+    html += "</table>";
+    studentInfoDiv.innerHTML = html;
+  }
+
+  // initial status
+  setStatus("Ready. OpenCV will load automatically when needed.");
 </script>
 </body>
 </html>
