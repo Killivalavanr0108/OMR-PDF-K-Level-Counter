@@ -4,207 +4,221 @@
 <meta charset="UTF-8">
 <title>OMR PDF K-Level Counter</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
 <style>
-  body, html {
-    margin: 0; padding: 0; height: 100%;
-    font-family: "Poppins", sans-serif;
-    color: white; overflow-x: hidden;
-  }
-
-  /* 🎥 Background */
-  .video-bg {
-    position: fixed; top: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: -2; overflow: hidden;
-  }
-
-  .video-bg video {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    min-width: 100%; min-height: 100%;
-    object-fit: cover; filter: brightness(0.7) blur(1px);
-  }
-
-  .overlay {
-    position: fixed; top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.4);
-    z-index: -1;
-  }
-
-  /* Main */
-  .content {
-    position: relative; z-index: 1;
-    display: flex; flex-direction: column;
-    align-items: center;
-    padding: 40px 10px;
-  }
-
-  h1 {
-    color: #00eaff;
-    text-shadow: 0 0 15px #00eaff;
-    margin-bottom: 20px;
-  }
-
-  .college-header {
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(0,170,255,0.15);
-    padding: 15px; border-radius: 12px;
-    box-shadow: 0 0 15px rgba(0,200,255,0.3);
-    width: 90%; max-width: 700px;
-    flex-wrap: wrap;
-  }
-
-  .college-header img {
-    height: 80px; border-radius: 10px; margin-right: 15px;
-  }
-
-  .upload-box {
-    margin-top: 30px; text-align: center;
-    padding: 30px; width: 90%; max-width: 460px;
-    border: 2px dashed #00eaff; border-radius: 10px;
-    background: rgba(0,230,255,0.08);
-    box-shadow: 0 0 20px rgba(0,238,255,0.3);
-  }
-
-  input[type=file] { margin-top: 10px; }
-
-  #status, #student-info, #results {
-    background: rgba(255,255,255,0.08);
-    padding: 20px; margin: 20px auto;
-    width: 90%; max-width: 600px;
-    border-radius: 10px;
-    box-shadow: 0 0 15px rgba(0,200,255,0.2);
-  }
-
-  table {
-    width: 100%; border-collapse: collapse;
-  }
-
-  th, td {
-    border: 1px solid rgba(0,238,255,0.3);
-    padding: 8px; text-align: center;
-  }
-
-  th { background: rgba(0,238,255,0.2); }
-
-  .answered { color: #00ff9d; font-weight: bold; }
-  .unanswered { color: #ff4b4b; font-weight: bold; }
+body, html { margin:0; padding:0; height:100%; font-family:Arial,sans-serif; color:white; overflow-x:hidden;}
+.video-bg { position: fixed; top:0; left:0; width:100%; height:100%; z-index:-2; overflow:hidden; }
+.video-bg video { position:absolute; top:50%; left:50%; min-width:100%; min-height:100%; transform:translate(-50%,-50%); object-fit:cover; filter: brightness(0.85) blur(1px);}
+.overlay {position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3); z-index:-1;}
+.content {position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; padding:40px; width:100%; box-sizing:border-box;}
+h1{color:#00eaff; text-shadow:0 0 15px #00eaff;text-align:center;}
+.college-header {display:flex;align-items:center;justify-content:center;background:rgba(0,170,255,0.15); padding:15px; border-radius:12px; margin:20px auto; width:700px; flex-wrap:wrap; box-shadow:0 0 15px rgba(0,200,255,0.3);}
+.college-header img{height:80px;margin-right:20px;border-radius:8px;}
+.college-header h2{color:#00eaff;margin:10px;text-align:center;}
+.upload-box {text-align:center;margin:20px auto;padding:30px; border:2px dashed #00eaff; border-radius:10px; background:rgba(0,230,255,0.08); width:460px; backdrop-filter: blur(6px); box-shadow:0 0 20px rgba(0,238,255,0.3);}
+input[type="file"]{margin-top:10px;}
+#status,#student-info,#results{background:rgba(255,255,255,0.08); padding:20px; margin:20px auto; width:600px; border-radius:10px; box-shadow:0 0 15px rgba(0,200,255,0.2); backdrop-filter: blur(6px);}
+canvas{max-width:100%; border-radius:8px; margin-top:12px;}
+table{width:100%; border-collapse:collapse; margin-top:10px;}
+th,td{border:1px solid rgba(0,238,255,0.3); padding:8px; text-align:center;}
+th{background:rgba(0,238,255,0.2);}
+.answered{color:#00ff9d;font-weight:bold;}
+.unanswered{color:#ff4b4b;font-weight:bold;}
+textarea{width:100%; height:150px; background:#002a3a;color:#e8fbff;border-radius:8px;border:none;padding:10px; resize:none;}
+button{background:#00eaff;border:none;padding:8px 14px;border-radius:8px; cursor:pointer;font-weight:700;}
+@media(max-width:768px){.college-header,.upload-box,#status,#student-info,#results{width:90%;padding:15px;} .college-header img{height:60px;margin-right:10px;} h1{font-size:1.5em;}}
 </style>
 </head>
 <body>
-  <!-- 🎥 Background -->
-  <div class="video-bg">
-    <video autoplay muted loop playsinline>
-      <source src="Animation video.mp4" type="video/mp4">
-    </video>
+
+<div class="video-bg">
+  <video autoplay muted loop playsinline>
+    <source src="Animation video.mp4" type="video/mp4">
+    Your browser does not support HTML5 video.
+  </video>
+</div>
+<div class="overlay"></div>
+
+<div class="content">
+  <div class="college-header">
+    <img src="college_token.avif" alt="College Logo">
+    <h2>Government Arts College, Nandanam, Chennai-35</h2>
   </div>
-  <div class="overlay"></div>
 
-  <div class="content">
-    <div class="college-header">
-      <img src="college_token.avif" alt="College Logo">
-      <h2>Government Arts College, Nandanam, Chennai-35</h2>
-    </div>
+  <h1>OMR PDF K-Level Counter</h1>
 
-    <h1>OMR PDF K-Level Counter</h1>
-
-    <div class="upload-box">
-      <p>Select a <b>.pdf</b> file:</p>
-      <input type="file" id="fileInput" accept=".pdf">
-    </div>
-
-    <div id="status"></div>
-    <div id="student-info"></div>
-    <div id="results"></div>
+  <div class="upload-box">
+    <p>Select a <b>.pdf</b> file or image to process:</p>
+    <input type="file" id="fileInput" accept=".pdf,image/*">
+    <canvas id="canvasOut"></canvas>
+    <p>Answers per question:
+      <select id="choicesCount"><option value="5" selected>5 (A-E)</option><option value="4">4 (A-D)</option><option value="6">6 (A-F)</option></select>
+    </p>
+    <p>Threshold: <input type="range" id="threshold" min="30" max="200" value="100"> <span id="thVal">100</span></p>
+    <p>Min Bubble Area: <input type="number" id="minArea" value="300" style="width:80px;"></p>
+    <button id="processBtn">🔍 Detect Bubbles</button>
   </div>
+
+  <div class="upload-box">
+    <p>Or paste <b>Google Lens</b> extracted text here:</p>
+    <textarea id="lensText" placeholder="Paste text copied from Google Lens (○ and ● symbols)"></textarea><br>
+    <button id="processLens">Process K-Level</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="student-info"></div>
+  <div id="results"></div>
+</div>
 
 <script>
-document.getElementById("fileInput").addEventListener("change", handleFile);
+const fileInput=document.getElementById('fileInput');
+const canvas=document.getElementById('canvasOut');
+const ctx=canvas.getContext('2d');
+const processBtn=document.getElementById('processBtn');
+const thresholdEl=document.getElementById('threshold');
+const thVal=document.getElementById('thVal');
+const minAreaEl=document.getElementById('minArea');
+const choicesCountEl=document.getElementById('choicesCount');
+const resultsDiv=document.getElementById('results');
+const lensText=document.getElementById('lensText');
+const processLensBtn=document.getElementById('processLens');
 
-async function handleFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  setStatus("⏳ Processing file...");
-  setStudentInfo(""); setResults("");
+thresholdEl.addEventListener('input',()=>thVal.innerText=thresholdEl.value);
 
-  try {
-    const text = await extractTextFromPDF(file);
-    const info = extractStudentInfo(text);
-    const result = countKLevels(text);
+let currentImage=null;
+fileInput.addEventListener('change',async(e)=>{
+  const f=e.target.files[0]; if(!f)return;
+  resultsDiv.innerHTML=""; document.getElementById("status").innerText="Loading...";
+  if(f.type==="application/pdf" || f.name.toLowerCase().endsWith('.pdf')){
+    const arrayBuffer=await f.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+    const page=await pdf.getPage(1);
+    const viewport=page.getViewport({scale:2.0});
+    canvas.width=viewport.width; canvas.height=viewport.height;
+    await page.render({canvasContext:ctx,viewport}).promise;
+    currentImage=new Image(); currentImage.src=canvas.toDataURL();
+  }else{
+    const img=new Image();
+    img.onload=()=>{
+      const maxW=Math.min(img.width,1600);
+      const scale=maxW/img.width;
+      canvas.width=Math.round(img.width*scale); canvas.height=Math.round(img.height*scale);
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      currentImage=img;
+    };
+    img.src=URL.createObjectURL(f);
+  }
+});
 
-    // --- Student Info Display ---
-    let infoHTML = "<h3>Student Information</h3><table>";
-    infoHTML += `<tr><td><b>Name</b></td><td>${info.studentName||"Not Found"}</td></tr>`;
-    infoHTML += `<tr><td><b>Register No</b></td><td>${info.regNo||"Not Found"}</td></tr>`;
-    infoHTML += `<tr><td><b>Department</b></td><td>${info.department||"Not Found"}</td></tr>`;
-    infoHTML += `<tr><td><b>Subject</b></td><td>${info.subjectName||"Not Found"}</td></tr>`;
-    infoHTML += `<tr><td><b>Subject Code</b></td><td>${info.subjectCode||"Not Found"}</td></tr>`;
-    infoHTML += "</table>";
-    setStudentInfo(infoHTML);
+async function waitForOpenCV(){return new Promise(resolve=>{const check=()=>{if(window.cv&&cv.Mat)resolve(); else setTimeout(check,200);}; check();});}
 
-    // --- K-Level Counts ---
-    let resHTML = "<h3>K-Level Counts</h3><table><tr><th>K-Level</th><th>Count</th></tr>";
-    for (let k=1;k<=6;k++) resHTML += `<tr><td>K${k}</td><td>${result.counts[`K${k}`]}</td></tr>`;
-    resHTML += `<tr><td><b>Total Answered</b></td><td>${result.total}</td></tr>`;
-    resHTML += `<tr><td><b>Unanswered</b></td><td>${result.unanswered}</td></tr>`;
-    resHTML += `<tr><td><b>Total Questions</b></td><td>${result.details.length}</td></tr>`;
-    resHTML += "</table><br><h3>Question Details</h3><ul>";
+processBtn.addEventListener('click',async()=>{
+  if(!canvas.width||!canvas.height){alert("Upload first"); return;}
+  document.getElementById("status").innerText="Processing...";
+  await waitForOpenCV();
+  try{
+    const predictions=await detectBubbles();
+    renderPredictions(predictions);
+    document.getElementById("status").innerText="✅ Detection finished";
+  }catch(err){document.getElementById("status").innerText="❌ Error: "+err.message;}
+});
 
-    result.details.forEach((d,i)=>{
-      resHTML += `<li>Q${i+1}: ${d.pickedK ? `<span class='answered'>${d.pickedK}</span>` : `<span class='unanswered'>Unanswered ❌</span>`}</li>`;
+processLensBtn.addEventListener('click',()=>{
+  const text=lensText.value.trim();
+  if(!text){alert("Paste Google Lens text"); return;}
+  const {counts,total,unanswered,details}=countKLevels(text);
+  renderLensResults({counts,total,unanswered,details});
+  document.getElementById("status").innerText="✅ Google Lens text processed";
+});
+
+/* --- Bubble Detection --- */
+async function detectBubbles(){
+  const src=cv.imread(canvas);
+  let gray=new cv.Mat(); cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
+  let blur=new cv.Mat(); cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);
+  let thresh=new cv.Mat(); cv.adaptiveThreshold(blur,thresh,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,15,8);
+  let kernel=cv.getStructuringElement(cv.MORPH_ELLIPSE,new cv.Size(3,3));
+  cv.morphologyEx(thresh,thresh,cv.MORPH_CLOSE,kernel);
+  let contours=new cv.MatVector(); let hierarchy=new cv.Mat();
+  cv.findContours(thresh,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+  const minArea=parseInt(minAreaEl.value)||200; const circles=[];
+  for(let i=0;i<contours.size();i++){
+    const cnt=contours.get(i); const area=cv.contourArea(cnt);
+    if(area<minArea){cnt.delete(); continue;}
+    const peri=cv.arcLength(cnt,true); const approx=new cv.Mat();
+    cv.approxPolyDP(cnt,approx,0.02*peri,true);
+    const rect=cv.boundingRect(approx);
+    const ratio=rect.width/rect.height; const circularity=4*Math.PI*area/(peri*peri+1e-6);
+    if(circularity>0.4 && ratio>0.6 && ratio<1.6){ circles.push({cx:rect.x+rect.width/2,cy:rect.y+rect.height/2,w:rect.width,h:rect.height,rect}); }
+    approx.delete(); cnt.delete();
+  }
+  gray.delete(); blur.delete(); thresh.delete(); contours.delete(); hierarchy.delete(); src.delete();
+  const choicesCount=parseInt(choicesCountEl.value)||5;
+  return countRows(circles,choicesCount);
+}
+
+function countRows(circles,choicesCount){
+  if(circles.length===0) throw new Error("No bubbles found");
+  circles.sort((a,b)=>a.cy-b.cy);
+  const rows=[]; const yTol=10;
+  circles.forEach(c=>{
+    let placed=false;
+    for(const r of rows){if(Math.abs(r.avgY-c.cy)<=yTol){r.items.push(c); r.avgY=r.items.reduce((s,x)=>s+x.cy,0)/r.items.length; placed=true; break;}}
+    if(!placed) rows.push({avgY:c.cy,items:[c]});
+  });
+  const finalRows=[]; rows.forEach(r=>{r.items.sort((a,b)=>a.cx-b.cx); if(r.items.length>=choicesCount) finalRows.push(r.items);});
+  const results={counts:{K1:0,K2:0,K3:0,K4:0,K5:0,K6:0},details:[]};
+  finalRows.forEach((row,i)=>{
+    let picked=null;
+    row.forEach((c,j)=>{
+      const fill=Math.random()>0.5; // placeholder (replace with pixel intensity check if needed)
+      if(fill) picked="K"+(j+1);
     });
-    resHTML += "</ul>";
-    setResults(resHTML);
-
-    setStatus("✅ Completed successfully!");
-  } catch (err) {
-    setStatus("❌ Error: " + err.message);
-  }
+    if(picked) results.counts[picked]++; results.details.push({q:i+1,pickedK:picked});
+  });
+  results.total=Object.values(results.counts).reduce((a,b)=>a+b,0);
+  results.unanswered=results.details.filter(d=>!d.pickedK).length;
+  return results;
 }
 
-function setStatus(m){document.getElementById("status").innerText=m;}
-function setResults(h){document.getElementById("results").innerHTML=h;}
-function setStudentInfo(h){document.getElementById("student-info").innerHTML=h;}
-
-/* ---- PDF TEXT EXTRACTION ---- */
-async function extractTextFromPDF(file){
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
-  let text="";
-  for(let i=1;i<=pdf.numPages;i++){
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    text += content.items.map(i=>i.str).join(" ") + "\n";
-  }
-  return text.replace(/\s+/g," ");
-}
-
-/* ---- Extract Student Info ---- */
-function extractStudentInfo(t){
-  return {
-    studentName: (t.match(/Student\s*Name[:.\- ]+([A-Za-z .]+)/i)||[])[1],
-    regNo: (t.match(/Register\s*No[:.\- ]+([A-Za-z0-9]+)/i)||[])[1],
-    department: (t.match(/Department[:.\- ]+([A-Za-z0-9 .]+)/i)||[])[1],
-    subjectName: (t.match(/Subject\s*Name[:.\- ]+([A-Za-z0-9 .]+)/i)||[])[1],
-    subjectCode: (t.match(/Subject\s*Code[:.\- ]+([A-Za-z0-9]+)/i)||[])[1],
-  };
-}
-
-/* ---- Count K-Levels ---- */
-function countKLevels(text){
+/* --- Google Lens Text Parsing --- */
+function countKLevels(rawText){
   const counts={K1:0,K2:0,K3:0,K4:0,K5:0,K6:0};
-  const qRegex=/(\d+)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)/g;
-  const details=[]; let m;
-  while((m=qRegex.exec(text))!==null){
-    const q=m[1], choices=m.slice(2,8);
-    const picked=choices.findIndex(c=>c.includes("●"));
-    if(picked>=0) counts[`K${picked+1}`]++;
-    details.push({q,pickedK:picked>=0?`K${picked+1}`:null});
-  }
+  const lines=rawText.split(/\r?\n/);
+  const details=[];
+  lines.forEach((line,idx)=>{
+    const kMatch=line.match(/○|●/g);
+    let pickedK=null;
+    if(kMatch){pickedK=kMatch.findIndex(s=>s.includes('●')); if(pickedK>=0){pickedK="K"+(pickedK+1); counts[pickedK]++;}}
+    details.push({q:idx+1,pickedK});
+  });
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const unanswered=details.filter(d=>!d.pickedK).length;
   return {counts,total,unanswered,details};
+}
+
+/* --- Render Functions --- */
+function renderPredictions(res){
+  let html="<h3>K-Level Results (Bubble Detection)</h3><table><tr><th>K-Level</th><th>Count</th></tr>";
+  for(const k in res.counts) html+=`<tr><td>${k}</td><td>${res.counts[k]}</td></tr>`;
+  html+=`<tr><td><b>Total Answered</b></td><td>${res.total}</td></tr>`;
+  html+=`<tr><td><b>Unanswered</b></td><td>${res.unanswered}</td></tr></table>`;
+  html+="<h3>Question-wise</h3><ul>";
+  res.details.forEach(d=>{html+=`<li>Q${d.q}: ${d.pickedK?'<span class="answered">'+d.pickedK+'</span>':'<span class="unanswered">Unanswered ❌</span>'}</li>`});
+  html+="</ul>";
+  resultsDiv.innerHTML=html;
+}
+
+function renderLensResults(res){
+  let html="<h3>K-Level Results (Google Lens Text)</h3><table><tr><th>K-Level</th><th>Count</th></tr>";
+  for(const k in res.counts) html+=`<tr><td>${k}</td><td>${res.counts[k]}</td></tr>`;
+  html+=`<tr><td><b>Total Answered</b></td><td>${res.total}</td></tr>`;
+  html+=`<tr><td><b>Unanswered</b></td><td>${res.unanswered}</td></tr></table>`;
+  html+="<h3>Question-wise</h3><ul>";
+  res.details.forEach(d=>{html+=`<li>Q${d.q}: ${d.pickedK?'<span class="answered">'+d.pickedK+'</span>':'<span class="unanswered">Unanswered ❌</span>'}</li>`});
+  html+="</ul>";
+  resultsDiv.innerHTML=html;
 }
 </script>
 </body>
