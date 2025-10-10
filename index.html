@@ -1,529 +1,211 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Merged OMR → K-Level Counter</title>
-
-<!-- OpenCV.js and pdf.js -->
-<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+<meta charset="UTF-8">
+<title>OMR PDF K-Level Counter</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
 <style>
-  :root {
-    --bg: #00171a; --cyan: #00eaff; --muted: #bfeeff;
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    font-family: "Poppins", sans-serif;
+    color: white; overflow-x: hidden;
   }
-  body,html{height:100%;margin:0;font-family:Inter,Arial, sans-serif;background:linear-gradient(180deg,#00171a,#00121a);color:var(--muted);padding:18px;}
-  .wrap{max-width:1100px;margin:0 auto;}
-  h1{color:var(--cyan);margin:0 0 8px 0;text-shadow:0 0 12px rgba(0,234,255,0.06);}
-  .panel{background:rgba(255,255,255,0.03);padding:14px;border-radius:10px;margin-top:12px;box-shadow:0 8px 30px rgba(0,200,255,0.02);}
-  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  label{color:var(--muted);font-size:0.95rem}
-  input[type=file]{color:var(--cyan)}
-  select,input[type=number],button,input[type=range]{padding:8px;border-radius:8px;border:1px solid rgba(0,234,255,0.08);background:transparent;color:var(--muted)}
-  button{background:var(--cyan);border:none;color:#00171a;font-weight:700;cursor:pointer}
-  canvas{max-width:100%;border-radius:8px;display:block;margin-top:12px;background:#082026}
-  table{width:100%;border-collapse:collapse;margin-top:12px;color:var(--muted)}
-  th,td{border:1px solid rgba(0,200,255,0.08);padding:8px;text-align:center}
-  .small{font-size:0.9rem;color:#bfeeff}
-  .download-btn{background:var(--cyan);padding:8px 12px;border-radius:8px;cursor:pointer;border:none;color:#00171a;margin-left:8px}
-  #chartCanvas{height:160px;width:100%;display:block;margin-top:12px;background:transparent}
-  .controls {display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .flex-1{flex:1}
+
+  /* 🎥 Background */
+  .video-bg {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: -2; overflow: hidden;
+  }
+
+  .video-bg video {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 100%; min-height: 100%;
+    object-fit: cover; filter: brightness(0.7) blur(1px);
+  }
+
+  .overlay {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.4);
+    z-index: -1;
+  }
+
+  /* Main */
+  .content {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: 40px 10px;
+  }
+
+  h1 {
+    color: #00eaff;
+    text-shadow: 0 0 15px #00eaff;
+    margin-bottom: 20px;
+  }
+
+  .college-header {
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,170,255,0.15);
+    padding: 15px; border-radius: 12px;
+    box-shadow: 0 0 15px rgba(0,200,255,0.3);
+    width: 90%; max-width: 700px;
+    flex-wrap: wrap;
+  }
+
+  .college-header img {
+    height: 80px; border-radius: 10px; margin-right: 15px;
+  }
+
+  .upload-box {
+    margin-top: 30px; text-align: center;
+    padding: 30px; width: 90%; max-width: 460px;
+    border: 2px dashed #00eaff; border-radius: 10px;
+    background: rgba(0,230,255,0.08);
+    box-shadow: 0 0 20px rgba(0,238,255,0.3);
+  }
+
+  input[type=file] { margin-top: 10px; }
+
+  #status, #student-info, #results {
+    background: rgba(255,255,255,0.08);
+    padding: 20px; margin: 20px auto;
+    width: 90%; max-width: 600px;
+    border-radius: 10px;
+    box-shadow: 0 0 15px rgba(0,200,255,0.2);
+  }
+
+  table {
+    width: 100%; border-collapse: collapse;
+  }
+
+  th, td {
+    border: 1px solid rgba(0,238,255,0.3);
+    padding: 8px; text-align: center;
+  }
+
+  th { background: rgba(0,238,255,0.2); }
+
+  .answered { color: #00ff9d; font-weight: bold; }
+  .unanswered { color: #ff4b4b; font-weight: bold; }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>OMR → K-Level (Merged) — Bubble Detector + K1–K6 Counter</h1>
+  <!-- 🎥 Background -->
+  <div class="video-bg">
+    <video autoplay muted loop playsinline>
+      <source src="Animation video.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="overlay"></div>
 
-    <div class="panel">
-      <div class="row controls">
-        <div>
-          <label>Upload image or PDF (first page will be used)</label><br>
-          <input id="fileInput" type="file" accept="image/*,.pdf">
-        </div>
-
-        <div>
-          <label>Choices per question</label><br>
-          <select id="choicesCount">
-            <option value="6" selected>6 (K1 - K6)</option>
-            <option value="5">5</option>
-            <option value="4">4</option>
-          </select>
-        </div>
-
-        <div>
-          <label>Fill threshold</label><br>
-          <input id="threshold" type="range" min="30" max="220" value="100">
-          <span id="thVal" class="small">100</span>
-        </div>
-
-        <div>
-          <label>Min bubble area (px)</label><br>
-          <input id="minArea" type="number" value="300" style="width:100px">
-        </div>
-
-        <div>
-          <label>&nbsp;</label><br>
-          <button id="processBtn">🔍 Detect & Convert → K-Levels</button>
-        </div>
-
-        <div style="margin-left:auto">
-          <button id="downloadCsv" class="download-btn" style="display:none">⬇ CSV</button>
-          <button id="downloadPdf" class="download-btn" style="display:none">⬇ PDF Report</button>
-        </div>
-      </div>
-
-      <div id="status" class="small" style="margin-top:10px">Status: waiting for file & OpenCV...</div>
+  <div class="content">
+    <div class="college-header">
+      <img src="college_token.avif" alt="College Logo">
+      <h2>Government Arts College, Nandanam, Chennai-35</h2>
     </div>
 
-    <div class="panel row" style="margin-top:16px">
-      <div style="flex:1">
-        <label>Rendered Page / Debug Canvas</label>
-        <canvas id="canvasOut"></canvas>
-      </div>
+    <h1>OMR PDF K-Level Counter</h1>
 
-      <div style="width:360px">
-        <label>Detected results</label>
-        <div id="resultsList" style="margin-top:8px;max-height:380px;overflow:auto"></div>
-        <div id="countsDiv" style="margin-top:10px"></div>
-        <canvas id="chartCanvas"></canvas>
-      </div>
+    <div class="upload-box">
+      <p>Select a <b>.pdf</b> file:</p>
+      <input type="file" id="fileInput" accept=".pdf">
     </div>
 
-    <div class="panel" style="margin-top:12px">
-      <label>Extracted Student Info (from PDF text if available)</label>
-      <div id="studentInfo" style="margin-top:8px"></div>
-    </div>
+    <div id="status"></div>
+    <div id="student-info"></div>
+    <div id="results"></div>
   </div>
 
 <script>
-  // Configure pdf.js worker
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+document.getElementById("fileInput").addEventListener("change", handleFile);
 
-  // Elements
-  const fileInput = document.getElementById('fileInput');
-  const processBtn = document.getElementById('processBtn');
-  const canvas = document.getElementById('canvasOut');
-  const ctx = canvas.getContext('2d');
-  const statusEl = document.getElementById('status');
-  const resultsList = document.getElementById('resultsList');
-  const countsDiv = document.getElementById('countsDiv');
-  const chartCanvas = document.getElementById('chartCanvas');
-  const studentInfoDiv = document.getElementById('studentInfo');
-  const downloadCsv = document.getElementById('downloadCsv');
-  const downloadPdf = document.getElementById('downloadPdf');
-  const thresholdEl = document.getElementById('threshold');
-  const thVal = document.getElementById('thVal');
-  const minAreaEl = document.getElementById('minArea');
-  const choicesCountEl = document.getElementById('choicesCount');
+async function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  setStatus("⏳ Processing file...");
+  setStudentInfo(""); setResults("");
 
-  let fileData = null;     // File object
-  let lastDetection = null; // predictions
-  let currentImage = null;  // Image loaded into canvas
-  let pdfRawText = "";      // extracted text if PDF was uploaded
+  try {
+    const text = await extractTextFromPDF(file);
+    const info = extractStudentInfo(text);
+    const result = countKLevels(text);
 
-  thresholdEl.addEventListener('input', ()=> thVal.innerText = thresholdEl.value);
+    // --- Student Info Display ---
+    let infoHTML = "<h3>Student Information</h3><table>";
+    infoHTML += `<tr><td><b>Name</b></td><td>${info.studentName||"Not Found"}</td></tr>`;
+    infoHTML += `<tr><td><b>Register No</b></td><td>${info.regNo||"Not Found"}</td></tr>`;
+    infoHTML += `<tr><td><b>Department</b></td><td>${info.department||"Not Found"}</td></tr>`;
+    infoHTML += `<tr><td><b>Subject</b></td><td>${info.subjectName||"Not Found"}</td></tr>`;
+    infoHTML += `<tr><td><b>Subject Code</b></td><td>${info.subjectCode||"Not Found"}</td></tr>`;
+    infoHTML += "</table>";
+    setStudentInfo(infoHTML);
 
-  fileInput.addEventListener('change', async (e) => {
-    const f = e.target.files[0];
-    if(!f) return;
-    fileData = f;
-    resultsList.innerHTML = ""; countsDiv.innerHTML = ""; studentInfoDiv.innerHTML = "";
-    downloadCsv.style.display = 'none'; downloadPdf.style.display = 'none';
-    setStatus("Loading file...");
-    if(f.type === "application/pdf" || f.name.toLowerCase().endsWith('.pdf')) {
-      // render page 1 to canvas and extract text
-      const arrayBuffer = await f.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      // extract text across pages (we will still run detection only on first page's rendered image)
-      pdfRawText = "";
-      for(let p=1;p<=pdf.numPages;p++){
-        const page = await pdf.getPage(p);
-        const content = await page.getTextContent();
-        const pageText = content.items.map(item=>item.str).join(" ");
-        pdfRawText += pageText + "\n\n";
-      }
-      // Render first page
-      const page1 = await pdf.getPage(1);
-      const viewport = page1.getViewport({ scale: 2.0 });
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      await page1.render({ canvasContext: ctx, viewport }).promise;
-      currentImage = new Image();
-      currentImage.src = canvas.toDataURL();
-      setStatus("PDF page rendered. Ready to detect. (Text extracted if present)");
-      const info = extractStudentInfo(pdfRawText);
-      renderStudentInfo(info);
-    } else {
-      // image
-      const img = new Image();
-      img.onload = () => {
-        // scale down if too wide
-        const maxW = Math.min(img.width, 1600);
-        const scale = maxW / img.width;
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        currentImage = img;
-        setStatus("Image loaded. Ready to detect.");
-      };
-      img.onerror = () => setStatus("Failed to load image.");
-      img.src = URL.createObjectURL(f);
-    }
-  });
+    // --- K-Level Counts ---
+    let resHTML = "<h3>K-Level Counts</h3><table><tr><th>K-Level</th><th>Count</th></tr>";
+    for (let k=1;k<=6;k++) resHTML += `<tr><td>K${k}</td><td>${result.counts[`K${k}`]}</td></tr>`;
+    resHTML += `<tr><td><b>Total Answered</b></td><td>${result.total}</td></tr>`;
+    resHTML += `<tr><td><b>Unanswered</b></td><td>${result.unanswered}</td></tr>`;
+    resHTML += `<tr><td><b>Total Questions</b></td><td>${result.details.length}</td></tr>`;
+    resHTML += "</table><br><h3>Question Details</h3><ul>";
 
-  processBtn.addEventListener('click', async () => {
-    if(!canvas.width || !canvas.height) { alert("Please upload an image or PDF first."); return; }
-    setStatus("Waiting for OpenCV.js...");
-    await waitForOpenCV();
-    setStatus("OpenCV ready. Detecting bubbles...");
-    try {
-      await detectBubblesAndConvert();
-    } catch(err) {
-      console.error(err);
-      setStatus("Error: " + err.message);
-    }
-  });
-
-  function setStatus(msg){ statusEl.innerText = "Status: " + msg; console.log(msg); }
-
-  function waitForOpenCV(){
-    return new Promise((resolve, reject) => {
-      const tryReady = () => {
-        if(window.cv && cv.Mat) resolve();
-        else setTimeout(tryReady, 200);
-      };
-      tryReady();
+    result.details.forEach((d,i)=>{
+      resHTML += `<li>Q${i+1}: ${d.pickedK ? `<span class='answered'>${d.pickedK}</span>` : `<span class='unanswered'>Unanswered ❌</span>`}</li>`;
     });
+    resHTML += "</ul>";
+    setResults(resHTML);
+
+    setStatus("✅ Completed successfully!");
+  } catch (err) {
+    setStatus("❌ Error: " + err.message);
   }
+}
 
-  // --- Detection (adapted from your TNPSC detector) ---
-  async function detectBubblesAndConvert(){
-    const src = cv.imread(canvas);
-    let gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    let blurred = new cv.Mat();
-    cv.GaussianBlur(gray, blurred, new cv.Size(5,5), 0);
+function setStatus(m){document.getElementById("status").innerText=m;}
+function setResults(h){document.getElementById("results").innerHTML=h;}
+function setStudentInfo(h){document.getElementById("student-info").innerHTML=h;}
 
-    let thresh = new cv.Mat();
-    cv.adaptiveThreshold(blurred, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 8);
-
-    let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
-    cv.morphologyEx(thresh, thresh, cv.MORPH_CLOSE, kernel);
-
-    let contours = new cv.MatVector();
-    let hierarchy = new cv.Mat();
-    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-    const minArea = parseInt(minAreaEl.value) || 200;
-    const circles = [];
-    for(let i=0;i<contours.size();i++){
-      const cnt = contours.get(i);
-      const area = cv.contourArea(cnt);
-      if(area < minArea) { cnt.delete(); continue; }
-      const peri = cv.arcLength(cnt, true);
-      const approx = new cv.Mat();
-      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-      const rect = cv.boundingRect(approx);
-      const w = rect.width, h = rect.height;
-      const ratio = w / h;
-      const circularity = 4 * Math.PI * area / (peri * peri + 1e-6);
-      if(circularity > 0.35 && ratio > 0.5 && ratio < 1.6) {
-        const cx = rect.x + rect.width/2;
-        const cy = rect.y + rect.height/2;
-        circles.push({area, cx, cy, w:rect.width, h:rect.height, rect});
-      }
-      approx.delete(); cnt.delete();
-    }
-
-    if(circles.length === 0){
-      setStatus("No bubbles found. Try lowering min area or use clearer scan.");
-      // cleanup
-      src.delete(); gray.delete(); blurred.delete(); thresh.delete(); contours.delete(); hierarchy.delete(); kernel.delete();
-      return;
-    }
-
-    // cluster into rows
-    circles.sort((a,b)=>a.cy - b.cy);
-    const rows = [];
-    const yTol = Math.max(10, Math.round(Math.min(canvas.height, canvas.width) * 0.01));
-    circles.forEach(c => {
-      let placed=false;
-      for(const r of rows){
-        if(Math.abs(r.avgY - c.cy) <= yTol){
-          r.items.push(c);
-          r.avgY = r.items.reduce((s,x)=>s+x.cy,0)/r.items.length;
-          placed=true; break;
-        }
-      }
-      if(!placed) rows.push({avgY:c.cy, items:[c]});
-    });
-
-    const choicesCount = parseInt(choicesCountEl.value) || 6;
-    const filteredRows = rows.filter(r=>r.items.length >= Math.max(2, Math.floor(choicesCount*0.6)));
-    filteredRows.forEach(r=> r.items.sort((a,b)=>a.cx - b.cx));
-
-    // split rows with many bubbles into groups
-    const finalRows = [];
-    filteredRows.forEach(r => {
-      const items = r.items;
-      if(items.length === choicesCount) finalRows.push(items);
-      else if(items.length > choicesCount){
-        const groups = Math.round(items.length / choicesCount);
-        const perGroup = Math.round(items.length / groups);
-        for(let g=0; g<groups; g++){
-          const start = g*perGroup;
-          const slice = items.slice(start, start+perGroup);
-          if(slice.length >= choicesCount){
-            const step = slice.length / choicesCount;
-            const pick=[];
-            for(let k=0;k<choicesCount;k++) pick.push(slice[Math.floor(k*step)]);
-            finalRows.push(pick);
-          } else finalRows.push(slice);
-        }
-      } else finalRows.push(items);
-    });
-
-    const candidateRows = finalRows.filter(items => items.length >= Math.max(choicesCount - 1, 2));
-    candidateRows.sort((a,b) => (a.reduce((s,x)=>s+x.cy,0)/a.length) - (b.reduce((s,x)=>s+x.cy,0)/b.length));
-
-    // compute fill scores and pick selected
-    const th = parseInt(thresholdEl.value) || 100;
-    const predictions = [];
-    ctx.drawImage(canvas, 0, 0); // redraw base
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#00ff9d';
-    ctx.fillStyle = 'rgba(0,255,157,0.12)';
-    let qno = 1;
-    for(const items of candidateRows){
-      let group = items;
-      if(items.length > choicesCount){
-        const step = items.length / choicesCount;
-        group = [];
-        for(let k=0;k<choicesCount;k++) group.push(items[Math.floor(k*step)]);
-      }
-
-      group.sort((a,b)=>a.cx - b.cx);
-      const rowResult = { q: qno, choices: [] };
-
-      for(let i=0;i<group.length;i++){
-        const c = group[i];
-        const bx = Math.max(0, Math.round(c.cx - c.w*0.55));
-        const by = Math.max(0, Math.round(c.cy - c.h*0.55));
-        const bw = Math.min(canvas.width - bx, Math.round(c.w * 1.1));
-        const bh = Math.min(canvas.height - by, Math.round(c.h * 1.1));
-        const imageData = ctx.getImageData(bx, by, bw, bh);
-        let sum=0;
-        for(let p=0;p<imageData.data.length;p+=4){
-          const r = imageData.data[p], g = imageData.data[p+1], b2 = imageData.data[p+2];
-          const lum = 0.299*r + 0.587*g + 0.114*b2;
-          sum += lum;
-        }
-        const avg = sum / (bw * bh);
-        const fillScore = 255 - avg;
-        const filled = fillScore > th;
-        rowResult.choices.push({cx:c.cx,cy:c.cy,w:c.w,h:c.h,fillScore,filled,rect:{x:bx,y:by,w:bw,h:bh}});
-        // draw rect
-        ctx.beginPath();
-        ctx.rect(bx, by, bw, bh);
-        ctx.strokeStyle = filled ? '#00ff9d' : '#ff6b6b';
-        ctx.stroke();
-        if(filled){
-          ctx.fillStyle = 'rgba(0,255,157,0.12)';
-          ctx.fillRect(bx,by,bw,bh);
-        }
-      }
-
-      // decide selected
-      const filledChoices = rowResult.choices.map((c,i)=>({i,score:c.fillScore,filled:c.filled})).filter(x=>x.filled);
-      let selected = null;
-      if(filledChoices.length === 0){
-        const maxC = rowResult.choices.map((c,i)=>({i,score:c.fillScore})).reduce((a,b)=> a.score>b.score ? a : b, {i:0,score:-1});
-        if(maxC.score > th*0.6) selected = maxC.i;
-      } else if(filledChoices.length === 1) selected = filledChoices[0].i;
-      else {
-        const best = filledChoices.reduce((a,b)=> a.score>b.score ? a : b);
-        selected = best.i;
-      }
-
-      rowResult.selectedIndex = (selected===null||selected===undefined) ? null : selected;
-      // map to letter (A,B,C...) and then to K-level (K1..)
-      const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-      rowResult.selectedLetter = (rowResult.selectedIndex===null) ? null : letters[rowResult.selectedIndex];
-      predictions.push(rowResult);
-
-      // annotate
-      ctx.font = '12px Arial';
-      ctx.fillStyle = '#00eaff';
-      const annotateX = Math.max(4, group[0].cx - 24);
-      const annotateY = Math.max(14, group[0].cy - 12);
-      ctx.fillText('Q'+qno, annotateX, annotateY);
-      qno++;
-    }
-
-    // cleanup mats
-    src.delete(); gray.delete(); blurred.delete(); thresh.delete(); contours.delete(); hierarchy.delete(); kernel.delete();
-
-    lastDetection = predictions;
-    setStatus("Detection finished. Questions processed: " + predictions.length);
-    renderResultsAndCounts(predictions);
-    downloadCsv.style.display = predictions.length ? 'inline-block' : 'none';
-    downloadPdf.style.display = predictions.length ? 'inline-block' : 'none';
+/* ---- PDF TEXT EXTRACTION ---- */
+async function extractTextFromPDF(file){
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  let text="";
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(i=>i.str).join(" ") + "\n";
   }
+  return text.replace(/\s+/g," ");
+}
 
-  function renderResultsAndCounts(predictions){
-    resultsList.innerHTML = "";
-    const table = document.createElement('table');
-    const thead = document.createElement('thead');
-    thead.innerHTML = "<tr><th>Q#</th><th>Selected</th><th>Confidence</th><th>K-Level</th></tr>";
-    table.appendChild(thead);
-    const tbody = document.createElement('tbody');
+/* ---- Extract Student Info ---- */
+function extractStudentInfo(t){
+  return {
+    studentName: (t.match(/Student\s*Name[:.\- ]+([A-Za-z .]+)/i)||[])[1],
+    regNo: (t.match(/Register\s*No[:.\- ]+([A-Za-z0-9]+)/i)||[])[1],
+    department: (t.match(/Department[:.\- ]+([A-Za-z0-9 .]+)/i)||[])[1],
+    subjectName: (t.match(/Subject\s*Name[:.\- ]+([A-Za-z0-9 .]+)/i)||[])[1],
+    subjectCode: (t.match(/Subject\s*Code[:.\- ]+([A-Za-z0-9]+)/i)||[])[1],
+  };
+}
 
-    // K-level counts
-    const choicesCount = parseInt(choicesCountEl.value) || 6;
-    const kcount = {};
-    for(let i=1;i<=choicesCount;i++) kcount['K'+i]=0;
-
-    predictions.forEach((r, idx)=>{
-      const tr = document.createElement('tr');
-      const selLetter = r.selectedLetter || 'Unanswered';
-      const conf = (r.selectedIndex !== null && r.selectedIndex !== undefined) ? r.choices[r.selectedIndex].fillScore.toFixed(1) : (r.choices.reduce((a,b)=>Math.max(a,b.fillScore),0)).toFixed(1);
-      const kLevel = (r.selectedIndex===null || r.selectedIndex===undefined) ? '' : ('K'+(r.selectedIndex+1));
-      if(kLevel) kcount[kLevel] = (kcount[kLevel]||0) + 1;
-      tr.innerHTML = `<td>${r.q}</td><td>${selLetter}</td><td>${conf}</td><td>${kLevel || '—'}</td>`;
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    resultsList.appendChild(table);
-
-    // summary
-    const totalAnswered = Object.values(kcount).reduce((a,b)=>a+b,0);
-    const unanswered = predictions.length - totalAnswered;
-    let summaryHtml = "<div class='small'><b>Summary</b><br>";
-    summaryHtml += Object.entries(kcount).map(([k,v])=>`${k}: ${v}`).join(' | ');
-    summaryHtml += `<br>Total Answered: ${totalAnswered} | Unanswered: ${unanswered} | Total Qs: ${predictions.length}</div>`;
-    countsDiv.innerHTML = summaryHtml;
-
-    // draw simple bar chart
-    drawBarChart(kcount);
+/* ---- Count K-Levels ---- */
+function countKLevels(text){
+  const counts={K1:0,K2:0,K3:0,K4:0,K5:0,K6:0};
+  const qRegex=/(\d+)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)\s*\((.*?)\)/g;
+  const details=[]; let m;
+  while((m=qRegex.exec(text))!==null){
+    const q=m[1], choices=m.slice(2,8);
+    const picked=choices.findIndex(c=>c.includes("●"));
+    if(picked>=0) counts[`K${picked+1}`]++;
+    details.push({q,pickedK:picked>=0?`K${picked+1}`:null});
   }
-
-  function drawBarChart(kcount){
-    // simple chart on chartCanvas
-    const ctx2 = chartCanvas.getContext('2d');
-    chartCanvas.width = chartCanvas.clientWidth;
-    chartCanvas.height = 160;
-    ctx2.clearRect(0,0,chartCanvas.width, chartCanvas.height);
-    const keys = Object.keys(kcount);
-    const maxVal = Math.max(...Object.values(kcount),1);
-    const padding = 24;
-    const w = (chartCanvas.width - padding*2) / keys.length;
-    keys.forEach((k,i)=>{
-      const val = kcount[k];
-      const h = (val / maxVal) * (chartCanvas.height - 60);
-      const x = padding + i * w + 10;
-      const y = chartCanvas.height - h - 30;
-      // bar
-      ctx2.fillStyle = '#00eaff';
-      ctx2.fillRect(x, y, w-24, h);
-      // label
-      ctx2.fillStyle = '#bfeeff';
-      ctx2.font = '12px Arial';
-      ctx2.fillText(k, x, chartCanvas.height - 12);
-      ctx2.fillText(val, x, y - 6);
-    });
-  }
-
-  // --- CSV export ---
-  downloadCsv.addEventListener('click', ()=>{
-    if(!lastDetection) return alert("No detection available.");
-    const rows = ['Question,Selected,Klevel,Confidence'];
-    lastDetection.forEach(r=>{
-      const selectedLetter = r.selectedLetter || '';
-      const k = (r.selectedIndex===null||r.selectedIndex===undefined) ? '' : ('K'+(r.selectedIndex+1));
-      const conf = (r.selectedIndex===null||r.selectedIndex===undefined) ? (r.choices.reduce((a,b)=>Math.max(a,b.fillScore),0)).toFixed(1) : r.choices[r.selectedIndex].fillScore.toFixed(1);
-      rows.push(`${r.q},${selectedLetter},${k},${conf}`);
-    });
-    const csv = rows.join('\n');
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='omr_klevels.csv'; a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  // --- PDF report export (simple) ---
-  downloadPdf.addEventListener('click', ()=>{
-    if(!lastDetection) return alert("No detection available.");
-    // Build a simple HTML report and open print dialog (user can Save as PDF).
-    const win = window.open('','_blank','toolbar=0,location=0,menubar=0');
-    const choicesCount = parseInt(choicesCountEl.value) || 6;
-    const kcount = {};
-    for(let i=1;i<=choicesCount;i++) kcount['K'+i]=0;
-    lastDetection.forEach(r=>{
-      if(r.selectedIndex!==null && r.selectedIndex!==undefined) kcount['K'+(r.selectedIndex+1)]++;
-    });
-    const totalAnswered = Object.values(kcount).reduce((a,b)=>a+b,0);
-    const unanswered = lastDetection.length - totalAnswered;
-
-    let html = `<html><head><title>OMR K-Level Report</title>
-      <style>body{font-family:Arial;background:white;color:#111;padding:20px}h1{color:#00aeee}</style></head><body>`;
-    html += `<h1>OMR K-Level Report</h1>`;
-    if(pdfRawText) {
-      const info = extractStudentInfo(pdfRawText);
-      html += `<h3>Student Info</h3><table border="1" cellpadding="6">`;
-      html += `<tr><td><b>Name</b></td><td>${info.studentName||''}</td></tr>`;
-      html += `<tr><td><b>Register No</b></td><td>${info.regNo||''}</td></tr>`;
-      html += `<tr><td><b>Department</b></td><td>${info.department||''}</td></tr>`;
-      html += `<tr><td><b>Subject</b></td><td>${info.subjectName||''}</td></tr>`;
-      html += `<tr><td><b>Subject Code</b></td><td>${info.subjectCode||''}</td></tr>`;
-      html += `</table>`;
-    }
-    html += `<h3>K-Level Counts</h3><table border="1" cellpadding="6"><tr><th>K-Level</th><th>Count</th></tr>`;
-    for(const k in kcount) html += `<tr><td>${k}</td><td>${kcount[k]}</td></tr>`;
-    html += `<tr><td><b>Total Answered</b></td><td>${totalAnswered}</td></tr>`;
-    html += `<tr><td><b>Unanswered</b></td><td>${unanswered}</td></tr>`;
-    html += `</table><h3>Question-wise</h3><ol>`;
-    lastDetection.forEach(r=>{
-      const k = (r.selectedIndex===null || r.selectedIndex===undefined) ? 'UNANSWERED' : ('K'+(r.selectedIndex+1));
-      html += `<li>Q${r.q}: ${k}</li>`;
-    });
-    html += `</ol><script>setTimeout(()=>{window.print();},300);</script></body></html>`;
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-  });
-
-  // --- Student info extraction (similar to your K-level parser) ---
-  function extractStudentInfo(text){
-    if(!text) return {};
-    let t = text.replace(/\s+/g, " ");
-    // try to make keys simpler
-    t = t.replace(/Student\s*Name\s*[:\-\s]+/ig, "StudentName:");
-    t = t.replace(/Register\s*No\s*[:\-\s]+/ig, "RegisterNo:");
-    t = t.replace(/Department\s*[:\-\s]+/ig, "Department:");
-    t = t.replace(/Subject\s*Name\s*[:\-\s]+/ig, "SubjectName:");
-    t = t.replace(/Subject\s*Code\s*[:\-\s]+/ig, "SubjectCode:");
-    const name = (t.match(/StudentName:([A-Za-z0-9 .]+)/i) || [])[1] || null;
-    const reg = (t.match(/RegisterNo:([A-Za-z0-9]+)/i) || [])[1] || null;
-    const dept = (t.match(/Department:([A-Za-z0-9 .]+)/i) || [])[1] || null;
-    const subj = (t.match(/SubjectName:([A-Za-z0-9 .]+)/i) || [])[1] || null;
-    const subjcode = (t.match(/SubjectCode:([A-Za-z0-9]+)/i) || [])[1] || null;
-    return { studentName: name && name.trim(), regNo: reg && reg.trim(), department: dept && dept.trim(), subjectName: subj && subj.trim(), subjectCode: subjcode && subjcode.trim() };
-  }
-
-  function renderStudentInfo(info){
-    if(!info || Object.keys(info).length===0){ studentInfoDiv.innerHTML = "<div class='small'>No text-extracted student info found.</div>"; return; }
-    let html = "<table><tr><td><b>Student Name</b></td><td>"+(info.studentName||'Not found')+"</td></tr>";
-    html += "<tr><td><b>Register No</b></td><td>"+(info.regNo||'Not found')+"</td></tr>";
-    html += "<tr><td><b>Department</b></td><td>"+(info.department||'Not found')+"</td></tr>";
-    html += "<tr><td><b>Subject Name</b></td><td>"+(info.subjectName||'Not found')+"</td></tr>";
-    html += "<tr><td><b>Subject Code</b></td><td>"+(info.subjectCode||'Not found')+"</td></tr>";
-    html += "</table>";
-    studentInfoDiv.innerHTML = html;
-  }
-
-  // initial status
-  setStatus("Ready. OpenCV will load automatically when needed.");
+  const total=Object.values(counts).reduce((a,b)=>a+b,0);
+  const unanswered=details.filter(d=>!d.pickedK).length;
+  return {counts,total,unanswered,details};
+}
 </script>
 </body>
 </html>
