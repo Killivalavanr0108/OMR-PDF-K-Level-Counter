@@ -14,10 +14,8 @@
 <body>
 
 <h1>K-Level Counter</h1>
-
 <input type="file" id="excelFile" accept=".xlsx, .xls" />
 <button onclick="processExcel()">Process</button>
-
 <div id="results"></div>
 
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -27,10 +25,7 @@ let data = [];
 
 function processExcel() {
     const fileInput = document.getElementById('excelFile');
-    if (!fileInput.files.length) {
-        alert("Please select an Excel file.");
-        return;
-    }
+    if (!fileInput.files.length) { alert("Please select an Excel file."); return; }
 
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -38,10 +33,7 @@ function processExcel() {
         const workbook = XLSX.read(dataBinary, {type: "array"});
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         data = XLSX.utils.sheet_to_json(firstSheet, {defval: 0});
-        if(data.length === 0) {
-            alert("Excel file is empty or invalid.");
-            return;
-        }
+        if(data.length === 0) { alert("Excel file is empty or invalid."); return; }
         displayResults();
     };
     reader.readAsArrayBuffer(fileInput.files[0]);
@@ -53,80 +45,49 @@ function displayResults() {
 
     const kLevels = ["K1","K2","K3","K4","K5","K6"];
 
-    // Group data by Subject + Subject Code
-    const subjects = {};
-    data.forEach(row => {
-        const key = row["Subject"] + " (" + row["Subject Code"] + ")";
-        if(!subjects[key]) subjects[key] = [];
-        subjects[key].push(row);
-    });
+    // Student Details Table
+    const columns = ["S.No","Name","Reg.no","Subject","Subject Code"].concat(kLevels);
+    html += "<h3>Student Details</h3><table><tr>";
+    columns.forEach(col => html += `<th>${col}</th>`);
+    html += "</tr>";
 
-    // Totals across all students
-    let overallTotals = {};
-    kLevels.forEach(k => overallTotals[k] = 0);
-    let overallSumForAverage = 0;
-    let overallCountForAverage = 0;
-
-    Object.keys(subjects).forEach(subjectKey => {
-        const students = subjects[subjectKey];
-        html += `<h2>Subject: ${subjectKey}</h2>`;
-
-        // Student Details Table
-        const columns = ["S.No","Name","Reg.no","K1","K2","K3","K4","K5","K6"];
-        html += "<h3>Student Details</h3><table><tr>";
-        columns.forEach(col => html += `<th>${col}</th>`);
+    data.forEach(student => {
+        html += "<tr>";
+        columns.forEach(col => html += `<td>${student[col] || 0}</td>`);
         html += "</tr>";
+    });
+    html += "</table>";
 
-        students.forEach(student => {
-            html += "<tr>";
-            columns.forEach(col => html += `<td>${student[col] || 0}</td>`);
-            html += "</tr>";
+    // Initialize totals and counts
+    let kTotals = {}, kAnsweredCount = {};
+    kLevels.forEach(k => { kTotals[k]=0; kAnsweredCount[k]=0; });
+
+    data.forEach(student => {
+        kLevels.forEach(k => {
+            const val = Number(student[k] || 0);
+            kTotals[k] += val;
+            if(val > 0) kAnsweredCount[k]++;  // Count of students who answered this K level
         });
-        html += "</table>";
-
-        // K-Level Totals per Subject
-        let totals = {};
-        kLevels.forEach(k => totals[k]=0);
-        students.forEach(student => {
-            kLevels.forEach(k => {
-                const val = Number(student[k] || 0);
-                totals[k] += val;
-                overallTotals[k] += val;
-            });
-        });
-
-        html += "<h3>Total per K-Level (Subject)</h3><table><tr>";
-        kLevels.forEach(k => html += `<th>${k}</th>`);
-        html += "</tr><tr>";
-        kLevels.forEach(k => html += `<td>${totals[k]}</td>`);
-        html += "</tr></table>";
-
-        // Average K-Level per student
-        html += "<h3>Average K-Level per Student</h3><table><tr><th>S.No</th><th>Name</th><th>Reg.no</th><th>Average K</th></tr>";
-        students.forEach(student => {
-            let sumK = 0, countK = 0;
-            kLevels.forEach((k,index) => {
-                const val = Number(student[k] || 0);
-                sumK += val * (index + 1);
-                if(val > 0) countK++;
-            });
-            let avgK = countK ? (sumK / countK).toFixed(2) : 0;
-            overallSumForAverage += sumK;
-            overallCountForAverage += countK;
-            html += `<tr><td>${student["S.No"]}</td><td>${student["Name"]}</td><td>${student["Reg.no"]}</td><td>${avgK}</td></tr>`;
-        });
-        html += "</table><hr>";
     });
 
-    // Overall Totals and Average
-    html += "<h2>Overall K-Level Totals (All Students)</h2><table><tr>";
-    kLevels.forEach(k => html += `<th>${k}</th>`);
+    // Display Per K-Level Totals
+    html += "<h3>Per K-Level Total and Students Answered</h3><table><tr>";
+    kLevels.forEach(k => html += `<th>${k} Total</th>`);
+    kLevels.forEach(k => html += `<th>${k} Students Answered</th>`);
     html += "</tr><tr>";
-    kLevels.forEach(k => html += `<td>${overallTotals[k]}</td>`);
+    kLevels.forEach(k => html += `<td>${kTotals[k]}</td>`);
+    kLevels.forEach(k => html += `<td>${kAnsweredCount[k]}</td>`);
     html += "</tr></table>";
 
-    const overallAverage = overallCountForAverage ? (overallSumForAverage / overallCountForAverage).toFixed(2) : 0;
-    html += `<h2>Overall Average K-Level (All Students): ${overallAverage}</h2>`;
+    // Display Per K-Level Average (Total / Students Answered)
+    html += "<h3>Per K-Level Average (Total / Students Answered)</h3><table><tr>";
+    kLevels.forEach(k => html += `<th>${k} Average</th>`);
+    html += "</tr><tr>";
+    kLevels.forEach(k => {
+        const avg = kAnsweredCount[k] ? (kTotals[k] / kAnsweredCount[k]).toFixed(2) : 0;
+        html += `<td>${avg}</td>`;
+    });
+    html += "</tr></table>";
 
     resultsDiv.innerHTML = html;
 }
